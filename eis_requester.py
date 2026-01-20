@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
-import requests
+import json
 import time
+from pathlib import Path
 from typing import Optional
+
+import requests
 
 from utils.logger_config import get_logger
 from utils.progress import ProgressManager
@@ -12,6 +15,32 @@ from database_work.database_requests import get_region_codes
 from file_downloader import FileDownloader
 
 logger = get_logger()
+
+# Путь для отладочных логов (NDJSON) – используется для диагностики сети/SOAP
+DEBUG_LOG_PATH = Path(__file__).resolve().parent / ".cursor" / "debug.log"
+
+
+def debug_log(hypothesis_id: str, location: str, message: str, data: Optional[dict] = None) -> None:
+    """
+    Пишет отладочное сообщение в NDJSON-файл.
+    Используется только для диагностики (не влияет на основную логику).
+    """
+    try:
+        DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "sessionId": "debug-session",
+            "runId": "soap-debug",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "timestamp": int(time.time() * 1000),
+        }
+        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        # Никогда не ломаем основную логику из-за проблем с отладочными логами
+        pass
 
 
 class EISRequester:
@@ -107,13 +136,54 @@ class EISRequester:
         
         while True:
             try:
+                attempt += 1
+                debug_log(
+                    "SOAP1",
+                    "eis_requester.py:send_soap_request",
+                    "Отправка SOAP-запроса",
+                    {
+                        "attempt": attempt,
+                        "region_code": region_code,
+                        "subsystem": subsystem,
+                        "document_type": document_type,
+                        "url": self.url,
+                    },
+                )
+
                 response = requests.post(self.url, data=soap_request.encode("utf-8"), headers=headers, verify=False)
+                status_code = response.status_code
+                debug_log(
+                    "SOAP2",
+                    "eis_requester.py:send_soap_request",
+                    "Ответ от прокси",
+                    {
+                        "attempt": attempt,
+                        "region_code": region_code,
+                        "subsystem": subsystem,
+                        "document_type": document_type,
+                        "url": self.url,
+                        "status_code": status_code,
+                    },
+                )
                 response.raise_for_status()
                 return response.text
             except requests.exceptions.ConnectionError as e:
-                attempt += 1
                 error_msg = f"Ошибка подключения (регион {region_code}, {subsystem}, {document_type}): {e}"
                 logger.error(error_msg)
+                debug_log(
+                    "SOAP3",
+                    "eis_requester.py:send_soap_request",
+                    "Ошибка подключения к прокси",
+                    {
+                        "attempt": attempt,
+                        "region_code": region_code,
+                        "subsystem": subsystem,
+                        "document_type": document_type,
+                        "url": self.url,
+                        "error": str(e),
+                        "current_pause_seconds": current_pause,
+                    },
+                )
                 
                 # Выводим информацию о попытке переподключения
                 pause_minutes = current_pause // 60
@@ -136,6 +206,21 @@ class EISRequester:
                 # Для других ошибок (не подключение) просто пробрасываем исключение
                 error_msg = f"Ошибка при выполнении SOAP-запроса (регион {region_code}, подсистема {subsystem}, документ {document_type}): {e}"
                 logger.error(error_msg, exc_info=True)
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                debug_log(
+                    "SOAP4",
+                    "eis_requester.py:send_soap_request",
+                    "Ошибка HTTP при выполнении SOAP-запроса",
+                    {
+                        "attempt": attempt,
+                        "region_code": region_code,
+                        "subsystem": subsystem,
+                        "document_type": document_type,
+                        "url": self.url,
+                        "error": str(e),
+                        "status_code": status,
+                    },
+                )
                 raise
 
     def process_requests(self, processed_regions=None, on_region_processed=None):
@@ -190,6 +275,7 @@ class EISRequester:
                 # Снимок статистики ДО обработки региона
                 stats_before = stats_collector.get_snapshot()
                 downloaded_archives = 0  # Счетчик скачанных архивов для региона
+                had_download_errors = False  # Были ли ошибки скачивания архивов в этом регионе
                 
                 for subsystem in self.subsystems_44:
                     document_types = []
@@ -214,9 +300,45 @@ class EISRequester:
                         if archive_urls:
                             downloaded_archives += len(archive_urls)
                             # Скачиваем и сразу обрабатываем
-                            self.file_downloader.download_files(archive_urls, subsystem, region_code, self.progress_manager)
+                            try:
+                                self.file_downloader.download_files(
+                                    archive_urls,
+                                    subsystem,
+                                    region_code,
+                                    self.progress_manager,
+                                )
+                            except RuntimeError as download_error:
+                                # Критическая ошибка скачивания архивов – помечаем регион как проблемный,
+                                # НЕ считаем его успешно обработанным и переходим к следующему региону.
+                                had_download_errors = True
+                                logger.error(
+                                    "Критическая ошибка при скачивании архивов "
+                                    f"(регион {region_code}, подсистема {subsystem}): {download_error}"
+                                )
+                                debug_log(
+                                    "SOAP5",
+                                    "eis_requester.py:process_requests",
+                                    "Ошибка скачивания архивов для региона (44-ФЗ)",
+                                    {
+                                        "region_code": region_code,
+                                        "subsystem": subsystem,
+                                        "document_type": doc_type,
+                                        "error": str(download_error),
+                                    },
+                                )
+                                break
                         
+                        if had_download_errors:
+                            break
+
                         time.sleep(0.5)
+
+                    if had_download_errors:
+                        break
+                
+                if had_download_errors:
+                    # Переходим к следующему региону, НЕ фиксируя этот регион как успешно обработанный
+                    continue
                 
                 for subsystem in self.subsystems_223:
                     document_types = []
@@ -241,9 +363,43 @@ class EISRequester:
                         if archive_urls:
                             downloaded_archives += len(archive_urls)
                             # Скачиваем и сразу обрабатываем
-                            self.file_downloader.download_files(archive_urls, subsystem, region_code, self.progress_manager)
+                            try:
+                                self.file_downloader.download_files(
+                                    archive_urls,
+                                    subsystem,
+                                    region_code,
+                                    self.progress_manager,
+                                )
+                            except RuntimeError as download_error:
+                                had_download_errors = True
+                                logger.error(
+                                    "Критическая ошибка при скачивании архивов "
+                                    f"(регион {region_code}, подсистема {subsystem}): {download_error}"
+                                )
+                                debug_log(
+                                    "SOAP6",
+                                    "eis_requester.py:process_requests",
+                                    "Ошибка скачивания архивов для региона (223-ФЗ)",
+                                    {
+                                        "region_code": region_code,
+                                        "subsystem": subsystem,
+                                        "document_type": doc_type,
+                                        "error": str(download_error),
+                                    },
+                                )
+                                break
                         
+                        if had_download_errors:
+                            break
+
                         time.sleep(0.5)
+
+                    if had_download_errors:
+                        break
+                
+                if had_download_errors:
+                    # Переходим к следующему региону, НЕ фиксируя этот регион как успешно обработанный
+                    continue
                 
                 # Снимок статистики ПОСЛЕ обработки региона
                 stats_after = stats_collector.get_snapshot()

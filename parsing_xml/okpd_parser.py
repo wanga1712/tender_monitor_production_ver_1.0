@@ -1,6 +1,8 @@
 import os
 import xml.etree.ElementTree as ET
 import time
+import json
+from pathlib import Path
 from typing import Optional
 
 from utils.logger_config import get_logger
@@ -14,6 +16,33 @@ from parsing_xml.xml_parser_recouped_contract import AdvancedXMLParser
 from database_work.database_operations import DatabaseOperations
 
 logger = get_logger()
+
+# Путь для отладочных логов (общий для проекта) — используется только для диагностики
+DEBUG_LOG_PATH = Path(__file__).resolve().parent.parent / ".cursor" / "debug.log"
+
+
+def debug_log(hypothesis_id: str, location: str, message: str, data: Optional[dict] = None) -> None:
+    """
+    Пишет отладочное сообщение в NDJSON-файл.
+    Используется только для диагностики, не влияет на основную логику.
+    """
+    try:
+        DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "sessionId": "debug-session",
+            "runId": "okpd-debug",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "timestamp": int(time.time() * 1000),
+        }
+        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        # Никогда не ломаем основную логику из-за проблем с отладочными логами
+        pass
+
 
 def process_okpd_files(folder_path, region_code, progress_manager: Optional[ProgressManager] = None):
     db_id_fetcher = DatabaseIDFetcher()
@@ -142,15 +171,27 @@ def process_contract_with_number(file_path, contract_number, folder_path):
 def process_okpd_files_normal(folder_path, db_id_fetcher, region_code, progress_manager: Optional[ProgressManager] = None):
     file_deleter = FileDeleter(folder_path)
     xml_files = [f for f in os.listdir(folder_path) if f.endswith(".xml")]
-    
+
     if not xml_files:
+        debug_log(
+            "OK1",
+            "okpd_parser.py:process_okpd_files_normal",
+            "XML файлов не найдено в папке",
+            {"folder_path": folder_path, "region_code": region_code},
+        )
         return
-    
+
     total_files = len(xml_files)
     processed_count = 0
     skipped_count = 0
     
     logger.info(f"Найдено {total_files} XML файлов для обработки (регион {region_code})")
+    debug_log(
+        "OK2",
+        "okpd_parser.py:process_okpd_files_normal",
+        "Найдены XML файлы для обработки",
+        {"folder_path": folder_path, "region_code": region_code, "total_files": total_files},
+    )
     
     # Используем единый прогресс-бар "process_all" если он существует
     use_unified_progress = False
@@ -186,6 +227,18 @@ def process_okpd_files_normal(folder_path, db_id_fetcher, region_code, progress_
                 progress_manager.set_description(process_task_name, f"⚙️ Обработка {fz_type} | Регион {region_code} | {idx}/{total_files}")
     
     logger.info(f"Обработано файлов: {processed_count} обработано, {skipped_count} пропущено (регион {region_code})")
+    debug_log(
+        "OK3",
+        "okpd_parser.py:process_okpd_files_normal",
+        "Обработка XML файлов завершена",
+        {
+            "folder_path": folder_path,
+            "region_code": region_code,
+            "processed_count": processed_count,
+            "skipped_count": skipped_count,
+            "total_files": total_files,
+        },
+    )
 
 
 def process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_deleter, folder_path):
@@ -200,6 +253,12 @@ def process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_del
     При ошибке доступа к БД - НЕ обрабатывает файл и НЕ удаляет его (чтобы не потерять данные)
     """
     try:
+        debug_log(
+            "OK4",
+            "okpd_parser.py:process_okpd_file",
+            "Начало обработки файла",
+            {"file_name": file_name, "region_code": region_code, "folder_path": folder_path},
+        )
         # Проверяем, был ли файл уже обработан
         try:
             file_id = db_id_fetcher.get_file_names_xml_id(file_name)
@@ -209,7 +268,7 @@ def process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_del
             error_msg = f"КРИТИЧЕСКАЯ ОШИБКА: Нет доступа к БД при проверке файла {file_name}. Ошибка: {db_error}"
             logger.error(error_msg)
             raise DatabaseError(error_msg, original_error=db_error) from db_error
-        
+
         if file_id:
             # Файл уже обработан - пропускаем
             try:
@@ -217,13 +276,25 @@ def process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_del
                 stats_collector.increment("files_skipped_already_processed", 1)
             except Exception:
                 pass
+            debug_log(
+                "OK5",
+                "okpd_parser.py:process_okpd_file",
+                "Файл уже был обработан ранее",
+                {"file_name": file_name, "region_code": region_code, "folder_path": folder_path, "file_id": file_id},
+            )
             file_deleter.delete_single_file(file_path)
             return "skipped"
 
         # Файл новый - добавляем его имя в БД
         try:
             db_operations = DatabaseOperations()
-            db_operations.insert_file_name(file_name)
+            inserted_id = db_operations.insert_file_name(file_name)
+            debug_log(
+                "OK6",
+                "okpd_parser.py:process_okpd_file",
+                "Новое имя файла добавлено в file_names_xml",
+                {"file_name": file_name, "region_code": region_code, "folder_path": folder_path, "inserted_id": inserted_id},
+            )
         except Exception as db_error:
             # Ошибка при добавлении имени файла - критическая ошибка БД - пробрасываем исключение дальше
             from utils.exceptions import DatabaseError
@@ -248,7 +319,19 @@ def process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_del
         if okpd_code:
             # Проверяем ОКПД код в БД и обрабатываем
             try:
+                debug_log(
+                    "OK7",
+                    "okpd_parser.py:process_okpd_file",
+                    "Найден ОКПД код в файле",
+                    {"file_name": file_name, "region_code": region_code, "okpd_code": okpd_code},
+                )
                 process_okpd_code(okpd_code, file_path, region_code, folder_path)
+                debug_log(
+                    "OK8",
+                    "okpd_parser.py:process_okpd_file",
+                    "Файл обработан с ОКПД и удалён",
+                    {"file_name": file_name, "region_code": region_code, "okpd_code": okpd_code},
+                )
                 return "processed"
             except Exception as db_error:
                 # Ошибка при проверке/обработке ОКПД - критическая ошибка БД - пробрасываем исключение дальше
@@ -264,12 +347,24 @@ def process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_del
             except Exception:
                 pass
             logger.error(f"Не найден код ОКПД в файле {file_name}")
+            debug_log(
+                "OK9",
+                "okpd_parser.py:process_okpd_file",
+                "ОКПД код не найден в файле",
+                {"file_name": file_name, "region_code": region_code},
+            )
             file_deleter.delete_single_file(file_path)
             return "skipped"
 
     except Exception as e:
         # Другие ошибки (не БД) - логируем и удаляем файл
         logger.error(f"Ошибка при обработке файла {file_name}: {e}", exc_info=True)
+        debug_log(
+            "OK10",
+            "okpd_parser.py:process_okpd_file",
+            "Ошибка при обработке файла",
+            {"file_name": file_name, "region_code": region_code, "error": str(e)},
+        )
         file_deleter.delete_single_file(file_path)
         return "error"
 
