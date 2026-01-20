@@ -1,0 +1,10 @@
+[Unit]
+Description=Ежедневная миграция завершенных контрактов TenderMonitor
+Requires=tendermonitor-migration.service
+
+[Timer]
+OnCalendar=*-*-* 22:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

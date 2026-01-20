@@ -1,13 +1,16 @@
 import os
 import re
 import xml.etree.ElementTree as ET
-from loguru import logger
 
+from utils.logger_config import get_logger
 from database_work.check_database import DatabaseCheckManager
 from database_work.database_operations import DatabaseOperations
 from database_work.database_id_fetcher import DatabaseIDFetcher
 from parsing_xml.xml_parser import XMLParser  # Импортируем родительский класс
 from file_delete.file_deleter import FileDeleter
+
+# Получаем logger (только ошибки в файл)
+logger = get_logger()
 
 
 class AdvancedXMLParser(XMLParser):
@@ -40,18 +43,14 @@ class AdvancedXMLParser(XMLParser):
         # Добавляем contractor_id
         found_tags['contractor_id'] = contractor_id
 
-        logger.debug(f"Теги для контракта: {found_tags}")
-
         # Поиск всех тегов <endDate> в документе
         end_dates = root.findall(".//executionPeriod/endDate")
 
         if end_dates:
             last_end_date = end_dates[-1].text.strip() if end_dates[-1].text else None
             found_tags["delivery_end_date"] = last_end_date
-            logger.info(f"Последний delivery_end_date найден: {last_end_date}")
         else:
             found_tags["delivery_end_date"] = None
-            logger.warning("Тег executionPeriod/endDate не найден!")
 
         # Обновление данных в базе данных
         try:
@@ -72,7 +71,6 @@ class AdvancedXMLParser(XMLParser):
         for tag, xpath in tags.items():
             element = root.find(f".//{xpath}")
             if element is None:
-                logger.warning(f"Не найден тег '{tag}' по пути: .//{xpath}")
                 found_tags[tag] = None
                 continue
 
@@ -92,16 +90,13 @@ class AdvancedXMLParser(XMLParser):
             # Получаем ID контрагента по ИНН
             contractor_id = self.db_id_fetcher.get_contractor_id(inn)
 
-            if contractor_id:
-                # Поставщик найден, просто получаем ID
-                logger.info(f"Поставщик с ИНН {inn} найден в базе данных. ID: {contractor_id}")
-            else:
+            if not contractor_id:
                 # Поставщик не найден, создаем нового и получаем его ID
-                logger.info(f"Поставщик с ИНН {inn} не найден, создаем нового.")
                 contractor_id = self.database_operations.insert_contractor(found_tags)
-                logger.info(f"Новый поставщик добавлен с ID {contractor_id}.")
+                if not contractor_id:
+                    logger.error(f"Не удалось добавить нового поставщика с ИНН {inn}")
         else:
-            logger.warning("ИНН не найден в данных.")
+            logger.error("ИНН не найден в данных поставщика")
 
         # Возвращаем ID контрагента (если нужно передать в другие функции)
         return contractor_id
@@ -115,7 +110,7 @@ class AdvancedXMLParser(XMLParser):
         for tag_name, tag_data in links_documentation_tags.items():
             xpath = tag_data.get("xpath")
             if not xpath:
-                logger.warning(f"Отсутствует xpath в секции {tag_name}")
+                logger.error(f"Отсутствует xpath в секции {tag_name}")
                 continue
 
             for elem in root.findall(xpath):
@@ -132,19 +127,14 @@ class AdvancedXMLParser(XMLParser):
                         "document_links": url,
                         "contract_id": id_contract_number
                     })
-                    logger.info(f"Найдена ссылка для контракта {id_contract_number}: {url} ({file_name})")
 
         for entry in found_tags:
-            logger.debug(f"Попытка вставки в базу: {entry}")
             try:
                 inserted_id = self.database_operations.insert_link_documentation_44_fz(entry)
-                if inserted_id:
-                    logger.debug(
-                        f"Успешная вставка: контракт {entry['contract_id']}, файл {entry['file_name']}, ссылка {entry['document_links']}")
-                else:
-                    logger.warning(f"Не удалось вставить запись для контракта {entry['contract_id']}: {entry}")
+                if not inserted_id:
+                    logger.error(f"Не удалось вставить запись для контракта {entry['contract_id']}: {entry}")
             except Exception as e:
-                logger.error(f"Ошибка при вставке в базу (контракт {entry['contract_id']}): {e}")
+                logger.error(f"Ошибка при вставке в базу (контракт {entry['contract_id']}): {e}", exc_info=True)
                 raise
 
         return found_tags
@@ -153,7 +143,6 @@ class AdvancedXMLParser(XMLParser):
         """
         Функция для извлечения тегов для одной записи XML.
         """
-        logger.info(f"Обрабатываем файл: {file_path}")
 
         # Определяем, какой JSON файл использовать в зависимости от папки
         if xml_folder_path == self.xml_paths['recouped_contract_archive_44_fz_xml']:
@@ -206,13 +195,9 @@ class AdvancedXMLParser(XMLParser):
             file_deleter.delete_single_file(file_path)
 
         # Парсим ссылки и документацию
-        logger.debug(f"Начинаем парсить ссылки и документацию для контракта {id_contract_number}")
         links_documentation = self.parse_links_documentation_recouped(
             root,
             id_contract_number,
             tags.get("links_documentation", {}),
             tags_file
         )
-        logger.debug(f"Парсинг ссылок завершен для контракта {contract_id}")
-
-        logger.info(f"Успешно обработан файл {file_path}")

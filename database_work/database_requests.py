@@ -1,6 +1,10 @@
-from loguru import logger
-
 from database_work.database_connection import DatabaseManager
+from utils.exceptions import DatabaseError
+
+from utils.logger_config import get_logger
+
+# Получаем logger (только ошибки в файл)
+logger = get_logger()
 
 
 def get_region_codes():
@@ -11,29 +15,33 @@ def get_region_codes():
     Коды регионов сортируются по возрастанию.
 
     :return: Список кодов регионов (list[str]), если запрос выполнен успешно.
-             Пустой список, если произошла ошибка.
+    :raises DatabaseError: Если произошла ошибка при подключении к БД или выполнении запроса.
     """
     db = DatabaseManager()
 
     try:
         # Выполняем запрос к базе данных для получения кодов регионов
-        query = "SELECT code FROM region ORDER BY code;"
+        # Используем DISTINCT для получения только уникальных кодов
+        query = "SELECT DISTINCT code FROM region ORDER BY code;"
         db.cursor.execute(query)
 
         # Получаем все коды регионов и преобразуем их в список
         codes = [row[0] for row in db.cursor.fetchall()]
 
-        # Логируем полученные коды
-        logger.debug(f"Получены коды регионов: {codes}")
-
         return codes
 
+    except DatabaseError:
+        # Ошибка подключения к БД - пробрасываем дальше
+        raise
     except Exception as e:
-        # Логируем ошибку, если произошла ошибка при получении данных
-        logger.exception(f"Ошибка при получении кодов регионов: {e}")
-        return []
+        # Другие ошибки БД - пробрасываем как DatabaseError
+        error_msg = f"Ошибка при получении кодов регионов из БД: {e}"
+        logger.error(error_msg, exc_info=True)
+        raise DatabaseError(error_msg, original_error=e) from e
 
     finally:
         # Закрываем курсор и соединение с базой данных
-        db.cursor.close()
-        db.connection.close()
+        if db.cursor:
+            db.cursor.close()
+        if db.connection:
+            db.connection.close()

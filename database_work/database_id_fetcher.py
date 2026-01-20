@@ -1,5 +1,13 @@
-from loguru import logger
 from database_work.database_connection import DatabaseManager
+
+from utils.logger_config import get_logger
+from utils.cache import get_cache
+
+# Получаем logger (только ошибки в файл)
+logger = get_logger()
+
+# Получаем кэш для часто используемых запросов
+cache = get_cache()
 
 class DatabaseIDFetcher:
     """
@@ -18,6 +26,19 @@ class DatabaseIDFetcher:
 
         self.db_manager = DatabaseManager()
         self.cursor = None  # Инициализируем курсор как None
+    
+    def __del__(self):
+        """Деструктор для закрытия соединения при удалении объекта."""
+        if hasattr(self, 'cursor') and self.cursor:
+            try:
+                self.cursor.close()
+            except:
+                pass
+        if hasattr(self, 'db_manager') and self.db_manager:
+            try:
+                self.db_manager.close()
+            except:
+                pass
 
     def get_cursor(self):
         """
@@ -32,7 +53,21 @@ class DatabaseIDFetcher:
     def fetch_id(self, table_name, column_name, value):
         """
         Универсальный метод для получения id записи по заданному значению в указанной таблице.
+        Использует кэширование для часто используемых запросов.
+        
+        Возвращает:
+        - int: id записи, если найдена
+        - None: если запись не найдена (нормальная ситуация)
+        - Выбрасывает исключение: если ошибка доступа к БД (критическая ситуация)
         """
+        # Создаем ключ для кэша
+        cache_key = f"{table_name}:{column_name}:{value}"
+        
+        # Пытаемся получить из кэша
+        if cache.has(cache_key):
+            cached_value = cache.get(cache_key)
+            return cached_value
+        
         query = f"SELECT id FROM {table_name} WHERE {column_name} = %s"
         params = (value,)
 
@@ -42,13 +77,19 @@ class DatabaseIDFetcher:
             cursor.execute(query, params)
             result = cursor.fetchone()
             if result:
-                return result[0]  # Возвращаем id
+                result_id = result[0]  # Возвращаем id
+                # Сохраняем в кэш
+                cache.set(cache_key, result_id)
+                return result_id
             else:
-                logger.warning(f"Запись с {column_name}={value} не найдена в {table_name}.")
+                # Сохраняем None в кэш (будет сохранен как NOT_FOUND маркер)
+                cache.set(cache_key, None)
                 return None
         except Exception as e:
-            logger.error(f"Ошибка при получении id из {table_name}: {e}")
-            return None
+            # При ошибке БД пробрасываем исключение дальше - это критическая ошибка
+            error_msg = f"КРИТИЧЕСКАЯ ОШИБКА БД при получении id из {table_name} (колонка {column_name}, значение {value}): {e}"
+            logger.error(error_msg, exc_info=True)
+            raise  # Пробрасываем исключение, чтобы вызывающий код знал об ошибке
 
     def get_collection_codes_okpd_id(self, code):
         """

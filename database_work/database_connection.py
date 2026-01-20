@@ -1,7 +1,14 @@
-from loguru import logger
 import os
 import psycopg2
 from dotenv import load_dotenv
+from contextlib import contextmanager
+from typing import Optional
+
+from utils.logger_config import get_logger
+from utils.exceptions import DatabaseError
+
+# Получаем logger (только ошибки в файл)
+logger = get_logger()
 
 class DatabaseManager:
     """
@@ -29,7 +36,9 @@ class DatabaseManager:
         """
 
         # Загружаем переменные окружения из файла .env
-        load_dotenv(dotenv_path=r'C:\Users\wangr\PycharmProjects\TenderMonitor\database_work\db_credintials.env')
+        # Определяем путь к файлу с учетными данными относительно текущего модуля
+        env_file_path = os.path.join(os.path.dirname(__file__), 'db_credintials.env')
+        load_dotenv(dotenv_path=env_file_path)
 
         # Получаем данные для подключения к базе данных
         self.db_host = os.getenv("DB_HOST")
@@ -45,15 +54,23 @@ class DatabaseManager:
                 user=self.db_user,
                 password=self.db_password,
                 host=self.db_host,
-                port=self.db_port
+                port=self.db_port,
+                connect_timeout=10
             )
+            # Устанавливаем autocommit в False для управления транзакциями
+            self.connection.autocommit = False
 
             # Инициализируем курсор для выполнения операций с базой данных
             self.cursor = self.connection.cursor()
-            logger.debug('Подключился к базе данных.')
-        except Exception as e:
+        except psycopg2.Error as e:
             # Логируем и выбрасываем исключение в случае ошибки подключения
-            logger.exception(f'Ошибка подключения к базе данных: {e}')
+            error_msg = f'Ошибка подключения к базе данных: {e}'
+            logger.error(error_msg, exc_info=True)
+            raise DatabaseError(error_msg, original_error=e) from e
+        except Exception as e:
+            error_msg = f'Неожиданная ошибка при подключении к базе данных: {e}'
+            logger.error(error_msg, exc_info=True)
+            raise DatabaseError(error_msg, original_error=e) from e
 
     def execute_query(self, query, params=None, fetch=False):
         """
@@ -64,11 +81,18 @@ class DatabaseManager:
         :param fetch: Если True, возвращает результат выполнения запроса.
 
         :return: Результат запроса, если `fetch=True`, иначе None.
+        :raises DatabaseError: При ошибке выполнения запроса.
         """
-        self.cursor.execute(query, params)
-        self.connection.commit()
-        if fetch:  # Только если нужен результат
-            return self.cursor.fetchall()
+        try:
+            self.cursor.execute(query, params)
+            self.connection.commit()
+            if fetch:  # Только если нужен результат
+                return self.cursor.fetchall()
+        except psycopg2.Error as e:
+            self.connection.rollback()
+            error_msg = f'Ошибка при выполнении запроса: {e}'
+            logger.error(error_msg, exc_info=True)
+            raise DatabaseError(error_msg, original_error=e) from e
 
     def fetch_one(self, query, params=None):
         """
@@ -77,10 +101,37 @@ class DatabaseManager:
         :param query: SQL-запрос для выполнения.
         :param params: Параметры для запроса.
         :return: Одна строка результата запроса или None.
+        :raises DatabaseError: При ошибке выполнения запроса.
         """
-        self.cursor.execute(query, params)
-        result = self.cursor.fetchone()
-        return result[0] if result else False  # Вернёт False, если данных нет
+        try:
+            self.cursor.execute(query, params)
+            result = self.cursor.fetchone()
+            return result[0] if result else None
+        except psycopg2.Error as e:
+            error_msg = f'Ошибка при выполнении запроса: {e}'
+            logger.error(error_msg, exc_info=True)
+            raise DatabaseError(error_msg, original_error=e) from e
+    
+    @contextmanager
+    def get_cursor(self):
+        """
+        Контекстный менеджер для получения курсора.
+        Автоматически коммитит изменения или откатывает при ошибке.
+        
+        :yields: Курсор базы данных
+        """
+        cursor = None
+        try:
+            cursor = self.connection.cursor()
+            yield cursor
+            self.connection.commit()
+        except Exception as e:
+            if self.connection:
+                self.connection.rollback()
+            raise
+        finally:
+            if cursor:
+                cursor.close()
 
     def close(self):
         """
@@ -91,9 +142,7 @@ class DatabaseManager:
         try:
             if self.cursor:
                 self.cursor.close()
-                logger.debug("Курсор закрыт.")
             if self.connection:
                 self.connection.close()
-                logger.debug("Соединение с базой данных закрыто.")
         except Exception as e:
-            logger.exception(f"Ошибка при закрытии соединения или курсора: {e}")
+            logger.error(f"Ошибка при закрытии соединения или курсора: {e}", exc_info=True)

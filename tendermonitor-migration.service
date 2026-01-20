@@ -1,0 +1,15 @@
+[Unit]
+Description=TenderMonitor - Ежедневная миграция завершенных контрактов
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=wanga
+WorkingDirectory=/opt/tendermonitor
+Environment="PATH=/opt/tendermonitor/venv/bin"
+ExecStart=/opt/tendermonitor/venv/bin/python /opt/tendermonitor/daily_migration.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

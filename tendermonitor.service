@@ -1,0 +1,20 @@
+[Unit]
+Description=TenderMonitor - Мониторинг тендеров ЕИС
+After=network.target nginx.service postgresql.service
+
+[Service]
+Type=simple
+User=wanga
+WorkingDirectory=/opt/tendermonitor
+Environment="PATH=/opt/tendermonitor/venv/bin"
+ExecStart=/opt/tendermonitor/venv/bin/python /opt/tendermonitor/main.py
+Restart=always
+RestartSec=30
+TimeoutStartSec=3600
+TimeoutStopSec=300
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

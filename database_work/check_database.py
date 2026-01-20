@@ -1,8 +1,11 @@
-from loguru import logger
-
 from file_delete.file_deleter import FileDeleter
 from database_work.database_connection import DatabaseManager
 from database_work.database_id_fetcher import DatabaseIDFetcher
+
+from utils.logger_config import get_logger
+
+# Получаем logger (только ошибки в файл)
+logger = get_logger()
 
 
 class DatabaseCheckManager:
@@ -70,9 +73,9 @@ class DatabaseCheckManager:
             return False
 
         finally:
-            if cursor:
-                cursor.close()  # Закрываем курсор вручную
-            self.db_manager.connection.close()  # Закрываем соединение вручную
+            # Не закрываем курсор и соединение здесь, так как они используются повторно
+            # Управление ресурсами должно быть на более высоком уровне
+            pass
 
 
     # Удалить за ненадобностью после проверки

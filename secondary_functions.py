@@ -3,33 +3,45 @@ import configparser
 import os
 from dotenv import load_dotenv
 import inspect
-from loguru import logger
+from typing import Optional
+
+from utils.logger_config import get_logger
+from utils.config_manager import ConfigManager
+from utils.exceptions import ConfigurationError
+
+# Получаем logger (только ошибки в файл)
+logger = get_logger()
+
+# Глобальный экземпляр менеджера конфигурации
+_config_manager: Optional[ConfigManager] = None
 
 
 def load_config(config_path="config.ini"):
     """
     Загружает конфигурационный файл и возвращает объект ConfigParser.
+    Использует кэшированный экземпляр ConfigManager для производительности.
 
     :param config_path: Путь к конфигурационному файлу (по умолчанию "config.ini").
     :return: Объект ConfigParser с загруженной конфигурацией.
-    :raises: Ошибка, если не удалось загрузить конфигурацию.
+    :raises ConfigurationError: Если не удалось загрузить конфигурацию.
     """
-    config = configparser.ConfigParser()
-
-    # Получаем путь к файлу конфигурации относительно местоположения самого модуля secondary_functions
-    current_function_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-
-    # Формируем абсолютный путь к конфигурации относительно модуля secondary_functions
-    config_path = os.path.join(current_function_path, config_path)
-
-    try:
-        # Читаем конфигурационный файл с указанным путём
-        logger.info(f"Используем конфигурацию из: {config_path}")
-        config.read(config_path, encoding="utf-8")
-        return config
-    except configparser.Error as e:
-        logger.error(f"Ошибка загрузки {config_path}: {e}")
-        raise
+    global _config_manager
+    
+    # Используем кэшированный экземпляр, если он уже создан
+    if _config_manager is None or _config_manager.config_path != config_path:
+        try:
+            _config_manager = ConfigManager(config_path)
+            # Валидация конфигурации
+            if not _config_manager.validate():
+                raise ConfigurationError("Конфигурация не прошла валидацию")
+        except ConfigurationError:
+            raise
+        except Exception as e:
+            error_msg = f"Ошибка загрузки конфигурации: {e}"
+            logger.error(error_msg, exc_info=True)
+            raise ConfigurationError(error_msg) from e
+    
+    return _config_manager.config
 
 
 def check_file_exists(file_path, description):
@@ -61,12 +73,11 @@ def load_regions(regions_file):
         # Загружаем регионы из JSON-файла
         with open(regions_file, "r", encoding="utf-8") as file:
             regions = json.load(file)
-            logger.info(f"Загружено {len(regions)} регионов из {regions_file}")
             return regions
     except json.JSONDecodeError as e:
-        logger.error(f"Ошибка в JSON-файле {regions_file}: {e}")
+        logger.error(f"Ошибка в JSON-файле {regions_file}: {e}", exc_info=True)
     except Exception as e:
-        logger.error(f"Неизвестная ошибка при загрузке регионов: {e}")
+        logger.error(f"Неизвестная ошибка при загрузке регионов: {e}", exc_info=True)
 
     return {}
 
@@ -107,10 +118,8 @@ def load_token(config):
     load_dotenv(env_path)
     token = os.getenv("TOKEN")
 
-    if token:
-        logger.info("Токен загружен успешно.")
-    else:
-        logger.error("Токен не найден в .env файле.")
+    if not token:
+        logger.error(f"Токен не найден в .env файле: {env_path}")
 
     return token
 
@@ -118,14 +127,9 @@ def load_token(config):
 # --- Основной блок кода ---
 if __name__ == "__main__":
     config = load_config()
-
-    # Загружаем путь к файлу регионов
-    regions_file = config.get("path", "reest_new_contract_archive_44_fz_xml", fallback=None)
-    if not regions_file:
-        logger.error("Путь к файлу регионов не указан в config.ini")
-    else:
-        logger.info(f"Файл регионов: {regions_file}")
-
     token = load_token(config)
-
-    logger.debug("Программа завершила работу.")
+    
+    if not token:
+        print("❌ Ошибка: Токен не найден!")
+    else:
+        print("✅ Токен загружен успешно")

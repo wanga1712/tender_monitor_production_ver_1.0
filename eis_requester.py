@@ -1,94 +1,68 @@
-from loguru import logger
 from datetime import datetime, timezone
-import uuid
 import requests
 import time
+from typing import Optional
 
-
+from utils.logger_config import get_logger
+from utils.progress import ProgressManager
+from utils import XMLParser
+from utils import stats as stats_collector
 from secondary_functions import load_token, load_config
 from database_work.database_requests import get_region_codes
-from utils import XMLParser  # Импорт класса с функцией extract_archive_urls
-from file_downloader import FileDownloader  # Импорт класса с функцией download_files
+from file_downloader import FileDownloader
+
+logger = get_logger()
 
 
 class EISRequester:
-    def __init__(self, config_path: str = "config.ini"):
-        """
-        Инициализация объекта EISRequester.
-
-        Загружает настройки из конфигурационного файла, токен для авторизации,
-        информацию о регионах, подсистемах и типах документов для работы с ЕИС.
-
-        :param config_path: Путь к конфигурационному файлу. По умолчанию "config.ini".
-        :raises ValueError: Если загрузка конфигурации не удалась.
-        """
-
-        # Загружаем настройки из конфигурации
+    def __init__(self, config_path: str = "config.ini", date: Optional[str] = None):
         self.config = load_config(config_path)
         if not self.config:
             raise ValueError("Ошибка загрузки конфигурации!")
 
-        self.url = "http://localhost:8080/eis-integration/services/getDocsIP"  # URL для запроса к ЕИС
-
-        # Загружаем токен для доступа к сервису
+        self.url = "http://localhost:8080/eis-integration/services/getDocsIP"
         self.token = load_token(self.config)
-
-        # Загружаем дату из конфигурации
-        self.date = self.config.get("eis", "date")
-        logger.info(f"Дата: {self.date}")  # Логируем текущую дату
-
-        # Получаем список регионов из файла с кодами регионов
+        # Если дата передана напрямую, используем её, иначе читаем из конфига
+        if date:
+            self.date = date
+        else:
+            self.date = self.config.get("eis", "date")
         self.regions = get_region_codes()
-
-        # Загружаем подсистемы для запроса по 44-ФЗ из конфигурации
         self.subsystems_44 = [s.strip() for s in self.config.get("eis", "subsystems_44").split(",")]
-
-        # Загружаем типы документов для подсистемы 'Извещения о закупках' по 44-ФЗ
-        self.documentType44_PRIZ = [doc.strip() for doc in self.config.get("eis", "documentType44_PRIZ").split(",")]
-
-        # Загружаем типы документов для подсистемы 'Протоколы подведения итогов' по 44-ФЗ
-        self.documentType44_RGK = [doc.strip() for doc in self.config.get("eis", "documentType44_RGK").split(",")]
-
-        # Загружаем подсистемы для запроса по 223-ФЗ из конфигурации
+        # Используем правильные ключи из конфига (с заглавной буквы или без - проверяем оба варианта)
+        try:
+            self.documentType44_PRIZ = [doc.strip() for doc in self.config.get("eis", "documentType44_PRIZ").split(",")]
+        except:
+            self.documentType44_PRIZ = [doc.strip() for doc in self.config.get("eis", "documenttype44_priz").split(",")]
+        try:
+            self.documentType44_RGK = [doc.strip() for doc in self.config.get("eis", "documentType44_RGK").split(",")]
+        except:
+            self.documentType44_RGK = [doc.strip() for doc in self.config.get("eis", "documenttype44_rgk").split(",")]
         self.subsystems_223 = [s.strip() for s in self.config.get("eis", "subsystems_223").split(",")]
-
-        # Загружаем типы документов для подсистемы 'Извещения о закупках' по 223-ФЗ
-        self.documentType223_RI223 = [doc.strip() for doc in self.config.get("eis", "documentType223_RI223").split(",")]
-
-        # Загружаем типы документов для подсистемы 'Протоколы подведения итогов' по 223-ФЗ
-        self.documentType223_RD223 = [doc.strip() for doc in self.config.get("eis", "documentType223_RD223").split(",")]
-
-        # Создаём объект для парсинга XML
+        try:
+            self.documentType223_RI223 = [doc.strip() for doc in self.config.get("eis", "documentType223_RI223").split(",")]
+        except:
+            self.documentType223_RI223 = [doc.strip() for doc in self.config.get("eis", "documenttype223_ri223").split(",")]
+        try:
+            self.documentType223_RD223 = [doc.strip() for doc in self.config.get("eis", "documentType223_RD223").split(",")]
+        except:
+            self.documentType223_RD223 = [doc.strip() for doc in self.config.get("eis", "documenttype223_rd223").split(",")]
+        
         self.xml_parser = XMLParser()
-
-        # Создаём объект для скачивания файлов
         self.file_downloader = FileDownloader()
+        self.progress_manager: Optional[ProgressManager] = None
 
     def get_current_time_utc(self) -> str:
-        """
-        Получает текущее время в формате UTC.
-
-        :return: Текущее время в формате "YYYY-MM-DDTHH:MM:SSZ"
-        """
-        # Возвращаем текущее время в UTC в нужном формате
         return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def generate_soap_request(self, region_code: int, subsystem: str, document_type: str) -> str:
-        """
-        Генерирует SOAP-запрос для получения документов из ЕИС.
-
-        :param region_code: Код региона для запроса.
-        :param subsystem: Подсистема (например, 44ФЗ или 223ФЗ) для запроса.
-        :param document_type: Тип документа (например, извещение или протокол).
-        :return: Сформированный SOAP-запрос в виде строки.
-        """
-
+        import uuid
         # Генерация уникального идентификатора для запроса
         id_value = str(uuid.uuid4())
         # Получаем текущее время в формате UTC
         current_time = self.get_current_time_utc()
 
-        # Формируем SOAP-запрос в формате XML
+        # Формируем SOAP-запрос в формате XML (оригинальный формат)
         soap_request = f"""<?xml version="1.0" encoding="UTF-8"?>
         <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
                           xmlns:ws="http://zakupki.gov.ru/fz44/get-docs-ip/ws">
@@ -114,140 +88,206 @@ class EISRequester:
             </soapenv:Body>
         </soapenv:Envelope>
         """
-
-        # Логируем информацию о сформированном запросе
-        logger.info(
-            f"Запрос для региона {region_code}, подсистемы {subsystem}, документа {document_type} сформирован.")
-
-        # Возвращаем сформированный SOAP-запрос
         return soap_request
 
     def send_soap_request(self, soap_request: str, region_code: int, document_type: str, subsystem: str) -> str:
         """
-        Отправляет SOAP-запрос к серверу и обрабатывает полученный ответ с повторными попытками подключения.
-
-        В случае разрыва соединения (например, ConnectionResetError), попытки повторяются с увеличением интервала.
+        Отправляет SOAP-запрос с повторными попытками при ошибках подключения.
+        При ошибке подключения повторяет попытку с увеличивающейся паузой: 5, 10, 15... до 60 минут, потом цикл заново.
         """
-        # Заголовки для отправки запроса
         headers = {
-            "Content-Type": "text/xml",  # Устанавливаем тип контента как XML
-            "Authorization": f"Bearer {self.token}"  # Токен авторизации в заголовках
+            "Content-Type": "text/xml",
+            "Authorization": f"Bearer {self.token}"
         }
-
-        max_retries = 6  # Максимальное количество попыток
-        backoff_times = [5, 10, 15, 20, 25, 30]  # Время ожидания для каждой повторной попытки в минутах
-        retry_count = 0
-
-        while retry_count < max_retries:
-            logger.info(f"Попытка отправки запроса ({retry_count + 1}/{max_retries})...")
+        
+        # Начальная пауза и максимальная пауза
+        current_pause = 5 * 60  # 5 минут в секундах
+        max_pause = 60 * 60  # 60 минут в секундах
+        attempt = 0
+        
+        while True:
             try:
-                # Отправка POST-запроса с SOAP-данными
                 response = requests.post(self.url, data=soap_request.encode("utf-8"), headers=headers, verify=False)
-                response.raise_for_status()  # Проверяем, что запрос завершился успешно
-                logger.info(f"Ответ от сервера получен.")  # Логируем успешный ответ
-
-                # Парсим XML-ответ и извлекаем ссылки на архивы
-                archive_urls = self.xml_parser.extract_archive_urls(response.text)
-                if archive_urls:
-                    # Логируем, если найдены ссылки на архивы, и начинаем их загрузку
-                    logger.info(f"Найдено {len(archive_urls)} ссылок на архивы. Начинаем загрузку...")
-                    self.file_downloader.download_files(archive_urls, subsystem, region_code)  # Загружаем файлы
-                    logger.debug(f"Download if {subsystem}")
-                else:
-                    # Логируем, если ссылки на архивы не найдены
-                    logger.warning(f"Ссылки на архивы не найдены. Ответ сервера: {response.text}")
-
-                return response.text  # Возвращаем текст ответа от сервера
-
+                response.raise_for_status()
+                return response.text
+            except requests.exceptions.ConnectionError as e:
+                attempt += 1
+                error_msg = f"Ошибка подключения (регион {region_code}, {subsystem}, {document_type}): {e}"
+                logger.error(error_msg)
+                
+                # Выводим информацию о попытке переподключения
+                pause_minutes = current_pause // 60
+                print(f"\n⚠️  Ошибка подключения | Попытка {attempt} | Пауза {pause_minutes} мин | Переподключение...")
+                
+                # Ждем перед следующей попыткой
+                time.sleep(current_pause)
+                
+                # Увеличиваем паузу на 5 минут, но не больше 60 минут
+                current_pause = min(current_pause + 5 * 60, max_pause)
+                
+                # Если достигли максимума, сбрасываем на 5 минут
+                if current_pause >= max_pause:
+                    current_pause = 5 * 60
+                    print(f"🔄 Цикл пауз сброшен, начинаем с 5 минут")
+                
+                # Продолжаем цикл для повторной попытки
+                continue
             except requests.exceptions.RequestException as e:
-                logger.error(f"Ошибка при выполнении SOAP-запроса: {e}")
-                if "Connection aborted" in str(e) or "ConnectionResetError" in str(e):
-                    # Если это ошибка подключения, то ожидаем перед следующей попыткой
-                    if retry_count < max_retries - 1:
-                        wait_time = backoff_times[retry_count]
-                        logger.info(f"Ошибка подключения. Попробуем снова через {wait_time} минут...")
-                        time.sleep(wait_time * 60)  # Ожидание в минутах
-                        retry_count += 1
-                    else:
-                        logger.error("Не удалось подключиться после нескольких попыток.")
-                        return None  # После исчерпания всех попыток возвращаем None
-                else:
-                    # Для других ошибок, если они не связаны с подключением
-                    logger.error("Ошибка, не связанная с подключением. Прерываем попытки.")
-                    return None  # Прерываем выполнение, если ошибка не связана с соединением
+                # Для других ошибок (не подключение) просто пробрасываем исключение
+                error_msg = f"Ошибка при выполнении SOAP-запроса (регион {region_code}, подсистема {subsystem}, документ {document_type}): {e}"
+                logger.error(error_msg, exc_info=True)
+                raise
 
-    def process_requests(self):
+    def process_requests(self, processed_regions=None, on_region_processed=None):
         """
-        Обрабатывает все запросы по всем регионам, подсистемам и типам документов.
-
-        Перебирает регионы, подсистемы и типы документов для 44-ФЗ и 223-ФЗ, генерирует и отправляет SOAP-запросы.
-        В случае ошибок при формировании запросов или отправке они логируются.
+        Обрабатывает запросы к ЕИС для всех регионов.
+        
+        :param processed_regions: Множество кодов регионов, которые уже обработаны (будут пропущены)
+        :param on_region_processed: Callback функция, вызываемая после обработки каждого региона (region_code)
         """
+        if processed_regions is None:
+            processed_regions = set()
+        
+        self.progress_manager = ProgressManager()
+        self.progress_manager.start()
+        
         try:
-            # Перебираем регионы
-            for region_code in self.regions:
-                logger.info(f"Начинаем обработку региона {region_code}")  # Логируем начало обработки региона
-                # Перебираем подсистемы для 44ФЗ
+            # Фильтруем регионы, исключая уже обработанные
+            regions_to_process = [r for r in self.regions if r not in processed_regions]
+            
+            if not regions_to_process:
+                logger.info(f"Все регионы для даты {self.date} уже обработаны, пропускаем")
+                return
+            
+            if processed_regions:
+                logger.info(f"Пропущено уже обработанных регионов: {len(processed_regions)}, осталось обработать: {len(regions_to_process)}")
+                print(f"ℹ️  Пропущено уже обработанных регионов: {len(processed_regions)}, осталось обработать: {len(regions_to_process)}")
+            
+            total_requests = 0
+            for region_code in regions_to_process:
                 for subsystem in self.subsystems_44:
                     if subsystem == "PRIZ":
-                        # Перебираем документы для PRIZ
-                        for document_type in self.documentType44_PRIZ:
-                            soap_request = self.generate_soap_request(region_code, subsystem, document_type)
-                            if soap_request:
-                                logger.info(
-                                    f"Запрос для PRIZ ({document_type}) успешно сформирован.")  # Логируем успешное формирование запроса
-                                # Передаем запрос в send_soap_request с необходимыми параметрами
-                                self.send_soap_request(soap_request, region_code, document_type, subsystem)
-                            else:
-                                logger.error(
-                                    f"Не удалось сформировать запрос для PRIZ ({document_type}).")  # Логируем ошибку при формировании запроса
-
+                        total_requests += len(self.documentType44_PRIZ)
                     elif subsystem == "RGK":
-                        # Перебираем документы для RGK
-                        for document_type in self.documentType44_RGK:
-                            soap_request = self.generate_soap_request(region_code, subsystem, document_type)
-                            if soap_request:
-                                logger.info(
-                                    f"Запрос для RGK ({document_type}) успешно сформирован.")  # Логируем успешное формирование запроса
-                                # Передаем запрос в send_soap_request с необходимыми параметрами
-                                self.send_soap_request(soap_request, region_code, document_type, subsystem)
-                            else:
-                                logger.error(
-                                    f"Не удалось сформировать запрос для RGK ({document_type}).")  # Логируем ошибку при формировании запроса
-
-                    # Перебираем подсистемы для 223ФЗ
-                    for subsystem in self.subsystems_223:
-                        if subsystem == "RI223":
-                            # Перебираем документы для RI223
-                            for document_type in self.documentType223_RI223:
-                                soap_request = self.generate_soap_request(region_code, subsystem, document_type)
-                                if soap_request:
-                                    logger.info(
-                                        f"Запрос для RI223 ({document_type}) успешно сформирован.")  # Логируем успешное формирование запроса
-                                    # Передаем запрос в send_soap_request с необходимыми параметрами
-                                    self.send_soap_request(soap_request, region_code, document_type, subsystem)
-                                else:
-                                    logger.error(
-                                        f"Не удалось сформировать запрос для RI223 ({document_type}).")  # Логируем ошибку при формировании запроса
-
-                        elif subsystem == "RD223":
-                            # Перебираем документы для RD223
-                            for document_type in self.documentType223_RD223:
-                                soap_request = self.generate_soap_request(region_code, subsystem, document_type)
-                                if soap_request:
-                                    logger.info(
-                                        f"Запрос для RD223 ({document_type}) успешно сформирован.")  # Логируем успешное формирование запроса
-                                    # Передаем запрос в send_soap_request с необходимыми параметрами
-                                    self.send_soap_request(soap_request, region_code, document_type, subsystem)
-                                else:
-                                    logger.error(
-                                        f"Не удалось сформировать запрос для RD223 ({document_type}).")  # Логируем ошибку при формировании запроса
-
-        except Exception as e:
-            logger.error(f"Ошибка при обработке запросов: {e}")  # Логируем ошибку при обработке запросов
-
-
-# Тестирование
-if __name__ == "__main__":
-    eis_requester = EISRequester(config_path="config.ini")
-    eis_requester.process_requests()
+                        total_requests += len(self.documentType44_RGK)
+                for subsystem in self.subsystems_223:
+                    if subsystem == "RI223":
+                        total_requests += len(self.documentType223_RI223)
+                    elif subsystem == "RD223":
+                        total_requests += len(self.documentType223_RD223)
+            
+            # Единый прогресс-бар для всех регионов
+            self.progress_manager.add_task("regions", f"🌍 Регионы", total=len(regions_to_process))
+            self.progress_manager.add_task("requests", f"📡 Запросы к ЕИС", total=total_requests)
+            self.progress_manager.add_task("download_all", f"⬇️ Скачивание архивов", total=None)
+            self.progress_manager.add_task("process_all", f"⚙️ Обработка файлов", total=None)
+            
+            for region_idx, region_code in enumerate(regions_to_process, 1):
+                # Обновляем прогресс регионов
+                self.progress_manager.update_task("regions", advance=1)
+                self.progress_manager.set_description("regions", f"🌍 Регионы | {region_idx}/{len(self.regions)}")
+                
+                # Снимок статистики ДО обработки региона
+                stats_before = stats_collector.get_snapshot()
+                downloaded_archives = 0  # Счетчик скачанных архивов для региона
+                
+                for subsystem in self.subsystems_44:
+                    document_types = []
+                    if subsystem == "PRIZ":
+                        document_types = self.documentType44_PRIZ
+                    elif subsystem == "RGK":
+                        document_types = self.documentType44_RGK
+                    
+                    # Обновляем описание только при смене подсистемы
+                    self.progress_manager.set_description("requests", f"📡 Запросы к ЕИС | Регион {region_code} | {subsystem}")
+                    
+                    for doc_type in document_types:
+                        # НЕ переходим к следующему запросу пока не обработаем текущий
+                        # send_soap_request сам будет повторять попытки при ошибках подключения
+                        self.progress_manager.update_task("requests", advance=1)
+                        
+                        soap_request = self.generate_soap_request(region_code, subsystem, doc_type)
+                        # send_soap_request будет повторять попытки при ошибках подключения до успеха
+                        response_xml = self.send_soap_request(soap_request, region_code, doc_type, subsystem)
+                        archive_urls = self.xml_parser.extract_archive_urls(response_xml)
+                        
+                        if archive_urls:
+                            downloaded_archives += len(archive_urls)
+                            # Скачиваем и сразу обрабатываем
+                            self.file_downloader.download_files(archive_urls, subsystem, region_code, self.progress_manager)
+                        
+                        time.sleep(0.5)
+                
+                for subsystem in self.subsystems_223:
+                    document_types = []
+                    if subsystem == "RI223":
+                        document_types = self.documentType223_RI223
+                    elif subsystem == "RD223":
+                        document_types = self.documentType223_RD223
+                    
+                    # Обновляем описание только при смене подсистемы
+                    self.progress_manager.set_description("requests", f"📡 Запросы к ЕИС | Регион {region_code} | {subsystem}")
+                    
+                    for doc_type in document_types:
+                        # НЕ переходим к следующему запросу пока не обработаем текущий
+                        # send_soap_request сам будет повторять попытки при ошибках подключения
+                        self.progress_manager.update_task("requests", advance=1)
+                        
+                        soap_request = self.generate_soap_request(region_code, subsystem, doc_type)
+                        # send_soap_request будет повторять попытки при ошибках подключения до успеха
+                        response_xml = self.send_soap_request(soap_request, region_code, doc_type, subsystem)
+                        archive_urls = self.xml_parser.extract_archive_urls(response_xml)
+                        
+                        if archive_urls:
+                            downloaded_archives += len(archive_urls)
+                            # Скачиваем и сразу обрабатываем
+                            self.file_downloader.download_files(archive_urls, subsystem, region_code, self.progress_manager)
+                        
+                        time.sleep(0.5)
+                
+                # Снимок статистики ПОСЛЕ обработки региона
+                stats_after = stats_collector.get_snapshot()
+                
+                # Вычисляем дельту (что добавилось за этот регион)
+                region_stats = {}
+                for key in stats_after:
+                    before_value = stats_before.get(key, 0)
+                    after_value = stats_after.get(key, 0)
+                    delta = after_value - before_value
+                    if delta > 0:
+                        region_stats[key] = delta
+                
+                # Выводим статистику по региону
+                if downloaded_archives > 0 or region_stats:
+                    parts = []
+                    if downloaded_archives > 0:
+                        parts.append(f"📥 Скачано архивов: {downloaded_archives}")
+                    if region_stats:
+                        db_parts = []
+                        # Маппинг ключей на русские названия
+                        ru_labels = {
+                            'customer': 'Заказчиков',
+                            'contractor': 'Подрядчиков',
+                            'reestr_contract_44_fz': 'Торгов 44-ФЗ',
+                            'reestr_contract_223_fz': 'Торгов 223-ФЗ',
+                            'links_documentation_44_fz': 'Ссылок 44-ФЗ',
+                            'links_documentation_223_fz': 'Ссылок 223-ФЗ',
+                            'trading_platform': 'Торговых площадок',
+                        }
+                        for key, value in region_stats.items():
+                            label = ru_labels.get(key, key)
+                            db_parts.append(f"{label}: {value}")
+                        if db_parts:
+                            parts.append(f"💾 В БД: {', '.join(db_parts)}")
+                    
+                    if parts:
+                        print(f"\r{' '*100}\r✅ Регион {region_code} ({region_idx}/{len(regions_to_process)}): {' | '.join(parts)}", flush=True)
+                
+                # Сохраняем прогресс обработки региона
+                if on_region_processed:
+                    try:
+                        on_region_processed(region_code)
+                    except Exception as e:
+                        logger.error(f"Ошибка при сохранении прогресса региона {region_code}: {e}", exc_info=True)
+        finally:
+            self.progress_manager.stop()

@@ -2,13 +2,19 @@ import os
 import uuid
 import requests
 from urllib.parse import urlparse
-from loguru import logger
+from typing import Optional
+
+from utils.logger_config import get_logger
+from utils.progress import ProgressManager
 from secondary_functions import load_config, load_token
 import time
 
 from archive_extractor import ArchiveExtractor
 from parsing_xml.okpd_parser import process_okpd_files  # Импортируем функцию для проверки ОКПД
 from file_delete.file_deleter import FileDeleter  # Импортируем класс FileDeleter
+
+# Получаем logger (только ошибки в файл)
+logger = get_logger()
 
 
 class FileDownloader:
@@ -33,15 +39,13 @@ class FileDownloader:
         # Создаем объект для разархивации
         self.archive_extractor = ArchiveExtractor(config_path)
 
-        # Логируем успешную загрузку конфигурации и токена
-        logger.info("Конфигурация и токен загружены успешно.")
-
-    def download_files(self, urls, subsystem, region_code):
+    def download_files(self, urls, subsystem, region_code, progress_manager: Optional[ProgressManager] = None):
         """
         Скачивает файлы по переданному списку URL и сохраняет их в нужную папку в зависимости от типа документа.
         :param urls: Список URL для скачивания файлов.
         :param subsystem: Тип документа, который используется для определения пути сохранения файлов.
         :param region_code: Код региона из SOAP-запроса.
+        :param progress_manager: Менеджер прогресс-баров для обновления прогресса.
         :return: Путь, куда были сохранены архивы.
         :raises: Записывает ошибки в лог при проблемах с скачиванием.
         """
@@ -51,6 +55,16 @@ class FileDownloader:
             "RI223": "reest_new_contract_archive_223_fz_xml",
             "RD223": "recouped_contract_archive_223_fz_xml",
         }
+
+        # Определяем тип ФЗ для описания
+        fz_type = "44-ФЗ" if subsystem in ["PRIZ", "RGK"] else "223-ФЗ"
+        # Имена задач для прогресс-баров (44-ФЗ -> download_44, 223-ФЗ -> download_223)
+        if fz_type == "44-ФЗ":
+            download_task_name = "download_44"
+            process_task_name = "process_44"
+        else:
+            download_task_name = "download_223"
+            process_task_name = "process_223"
 
         # Проверяем, есть ли subsystem в словаре
         path_key = path_mapping.get(subsystem)
@@ -64,20 +78,27 @@ class FileDownloader:
             logger.error(f"Путь не найден в конфигурации для {path_key}")
             return None
 
-        logger.info(f"Файлы будут сохранены в: {save_path}")
-
         # Создаём FileDeleter с уже известным save_path
         file_deleter = FileDeleter(save_path)
 
-        # Перебираем все URL в списке
+        if not urls:
+            return save_path
+
+        # Обновляем единый прогресс-бар скачивания
+        if progress_manager:
+            progress_manager.update_task("download_all", advance=0)
+            progress_manager.set_description("download_all", f"⬇️ Скачивание архивов | Регион {region_code} | {subsystem} | {fz_type}")
+        
+        logger.info(f"Начало скачивания {len(urls)} архивов ({fz_type}, регион {region_code})")
+
+        # Перебираем все URL в списке - скачиваем файлы
+        downloaded_count = 0
         for url in urls:
             try:
                 # Разбираем URL для получения имени файла
                 parsed_url = urlparse(url)
                 filename = os.path.basename(parsed_url.path) or f"file_{uuid.uuid4().hex[:8]}.zip"
                 file_path = os.path.join(save_path, filename)
-
-                logger.info(f"Скачивание {url} в {file_path}...")
 
                 # Устанавливаем заголовки для запроса
                 headers = {'individualPerson_token': self.token}
@@ -89,28 +110,107 @@ class FileDownloader:
                 # Записываем скачанный файл на диск
                 with open(file_path, "wb") as file:
                     for chunk in response.iter_content(chunk_size=8192):
-                        file.write(chunk)
-
-                logger.info(f"Файл сохранен: {file_path}")
+                        if chunk:
+                            file.write(chunk)
 
                 # После скачивания сразу разархивируем файл
                 self.archive_extractor.unzip_files(save_path)
 
-                time.sleep(5)  # 1 секунда задержки (можно настроить по необходимости)
-
-                # Удаляем файл после обработки
+                # Удаляем архив после распаковки
                 file_deleter.delete_single_file(file_path)
-                # logger.info(f'Файл {file_path} удален')
 
-                # Путь к разархивированным файлам
-                extracted_folder_path = save_path  # Папка с разархивированными файлами
-
-                # Проверяем файлы на ОКПД и удаляем, если они не в базе
-                okpd_results = process_okpd_files(extracted_folder_path, region_code)
-                logger.info(f"Обработка файлов в папке {extracted_folder_path} завершена.")
+                downloaded_count += 1
+                # Обновляем единый прогресс-бар скачивания
+                if progress_manager:
+                    progress_manager.update_task("download_all", advance=1)
+                    progress_manager.set_description("download_all", f"⬇️ Скачивание архивов | Регион {region_code} | {subsystem} | {downloaded_count}/{len(urls)}")
+                
+                logger.info(f"Скачан и распакован архив {downloaded_count}/{len(urls)} ({fz_type}, регион {region_code})")
 
             except requests.exceptions.RequestException as e:
                 logger.error(f"Ошибка при скачивании {url}: {e}")
+            except Exception as e:
+                logger.error(f"Неожиданная ошибка при скачивании файла {url}: {e}", exc_info=True)
+        
+        logger.info(f"Скачивание завершено: {downloaded_count}/{len(urls)} архивов ({fz_type}, регион {region_code})")
+        
+        # Обновляем описание задачи обработки
+        if progress_manager:
+            progress_manager.set_description("process_all", f"⚙️ Обработка файлов | Регион {region_code} | {subsystem} | {fz_type}")
+        
+        # После скачивания всех файлов обрабатываем данные
+        logger.info(f"Начало обработки файлов ({fz_type}, регион {region_code})")
+        process_okpd_files(save_path, region_code, progress_manager)
+        logger.info(f"Обработка файлов завершена ({fz_type}, регион {region_code})")
 
         # Возвращаем путь, в который были сохранены архивы
         return save_path
+    
+    def download_files_only(self, urls, subsystem, region_code, progress_manager: Optional[ProgressManager] = None):
+        """
+        ТОЛЬКО скачивает и распаковывает файлы (без обработки).
+        :param urls: Список URL для скачивания файлов.
+        :param subsystem: Тип документа.
+        :param region_code: Код региона.
+        :param progress_manager: Менеджер прогресс-баров.
+        :return: Словарь с информацией: {"path": save_path, "count": downloaded_count, "subsystem": subsystem, "region_code": region_code, "fz_type": fz_type}
+        """
+        path_mapping = {
+            "PRIZ": "reest_new_contract_archive_44_fz_xml",
+            "RGK": "recouped_contract_archive_44_fz_xml",
+            "RI223": "reest_new_contract_archive_223_fz_xml",
+            "RD223": "recouped_contract_archive_223_fz_xml",
+        }
+
+        fz_type = "44-ФЗ" if subsystem in ["PRIZ", "RGK"] else "223-ФЗ"
+        path_key = path_mapping.get(subsystem)
+        if not path_key:
+            logger.error(f"Не найден путь для типа документа: {subsystem}")
+            return {"path": None, "count": 0, "subsystem": subsystem, "region_code": region_code, "fz_type": fz_type}
+
+        save_path = self.config.get("path", path_key, fallback=None)
+        if not save_path:
+            logger.error(f"Путь не найден в конфигурации для {path_key}")
+            return {"path": None, "count": 0, "subsystem": subsystem, "region_code": region_code, "fz_type": fz_type}
+
+        file_deleter = FileDeleter(save_path)
+
+        if not urls:
+            return {"path": save_path, "count": 0, "subsystem": subsystem, "region_code": region_code, "fz_type": fz_type}
+
+        downloaded_count = 0
+        for url in urls:
+            try:
+                parsed_url = urlparse(url)
+                filename = os.path.basename(parsed_url.path) or f"file_{uuid.uuid4().hex[:8]}.zip"
+                file_path = os.path.join(save_path, filename)
+
+                headers = {'individualPerson_token': self.token}
+                response = requests.get(url, stream=True, headers=headers, timeout=120)
+                response.raise_for_status()
+
+                with open(file_path, "wb") as file:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            file.write(chunk)
+
+                # Распаковываем архив
+                self.archive_extractor.unzip_files(save_path)
+                # Удаляем архив
+                file_deleter.delete_single_file(file_path)
+
+                downloaded_count += 1
+                if progress_manager:
+                    progress_manager.update_task("download_all", advance=1)
+                    progress_manager.set_description("download_all", f"⬇️ Скачивание архивов | Регион {region_code} | {subsystem} | {downloaded_count}")
+
+                logger.info(f"Скачан и распакован архив {downloaded_count}/{len(urls)} ({fz_type}, регион {region_code})")
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Ошибка при скачивании {url}: {e}")
+            except Exception as e:
+                logger.error(f"Неожиданная ошибка при скачивании файла {url}: {e}", exc_info=True)
+        
+        logger.info(f"Скачивание завершено: {downloaded_count}/{len(urls)} архивов ({fz_type}, регион {region_code})")
+        
+        return {"path": save_path, "count": downloaded_count, "subsystem": subsystem, "region_code": region_code, "fz_type": fz_type}

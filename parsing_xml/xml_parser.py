@@ -1,13 +1,16 @@
 import json
 import xml.etree.ElementTree as ET
-from loguru import logger
 import re
 from datetime import datetime
 
+from utils.logger_config import get_logger
 from secondary_functions import load_config
 from database_work.database_operations import DatabaseOperations
 from database_work.database_id_fetcher import DatabaseIDFetcher
 from file_delete.file_deleter import FileDeleter
+
+# Получаем logger (только ошибки в файл)
+logger = get_logger()
 
 class XMLParser:
     """
@@ -37,7 +40,6 @@ class XMLParser:
         Полностью удаляет все пространства имен из XML-строки.
         Убирает как префиксы, так и их определения.
         """
-        logger.warning('запуск функции: remove_namespaces')
         # Удаление всех атрибутов xmlns:... и xmlns="..."
         no_namespaces = re.sub(r'\sxmlns(:\w+)?="[^"]+"', '', xml_string)
 
@@ -66,24 +68,30 @@ class XMLParser:
         Парсит данные для таблицы реестра контрактов 44-ФЗ и вставляет в БД.
         Если поле 'auction_name' пустое, прекращает обработку и удаляет файл через FileDeleter.
         """
+        logger.debug(f"🔍 Начало парсинга 44-ФЗ контракта из файла: {file_path}")
+        
         found_tags = self._parse_common_contract_data(root, tags, region_code, okpd_code, customer_id, platform_id,
                                                       tags_file)
 
         # Проверяем, что поле auction_name не пустое
         if not found_tags.get('auction_name'):
-            logger.warning(f"Поле 'auction_name' пустое для файла: {tags_file}. Прекращаем обработку и удаляем файл.")
-
+            logger.warning(f"⚠️  44-ФЗ: Не найдено auction_name в файле {file_path}, файл будет удален")
             # Удаляем файл через FileDeleter
             file_deleter = FileDeleter(xml_folder_path)
             file_deleter.delete_single_file(file_path)
-            logger.info(f"Файл {tags_file} удален.")
-
             # Прекращаем дальнейшую обработку
             return None
 
+        contract_number = found_tags.get('contract_number', 'неизвестен')
+        logger.debug(f"📝 44-ФЗ: Найден contract_number={contract_number}, начинаю вставку в БД")
+
         # Если значение поля 'auction_name' присутствует, продолжаем вставку данных
         contract_id = self.database_operations.insert_reestr_contract_44_fz(found_tags)
-        logger.info(f"Вставленная запись для 44-ФЗ имеет id: {contract_id}")
+
+        if contract_id:
+            logger.debug(f"✅ 44-ФЗ: Контракт {contract_number} успешно записан в БД (id={contract_id})")
+        else:
+            logger.warning(f"⚠️  44-ФЗ: Не удалось записать контракт {contract_number} в БД (возможно, дубликат)")
 
         return contract_id
 
@@ -92,25 +100,31 @@ class XMLParser:
         """
         Парсит данные для таблицы реестра контрактов 223-ФЗ и вставляет в БД.
         """
+        logger.debug(f"🔍 Начало парсинга 223-ФЗ контракта из файла: {file_path}")
+        
         # Парсим общие данные контракта
         found_tags = self._parse_common_contract_data(root, tags, region_code, okpd_code, customer_id, platform_id,
                                                       tags_file)
 
         # Проверяем, если нет значения для contract_number, пропускаем обработку и удаляем файл
         if not found_tags.get('contract_number'):
-            logger.warning(f"Отсутствует contract_number в файле {tags_file}. Пропускаем файл и удаляем его.")
-
+            logger.warning(f"⚠️  223-ФЗ: Не найден contract_number в файле {file_path}, файл будет удален")
             # Удаляем файл через FileDeleter
             file_deleter = FileDeleter(xml_folder_path)
             file_deleter.delete_single_file(file_path)
-            logger.info(f"Файл {tags_file} удален.")
-
             # Прекращаем дальнейшую обработку
             return None
 
+        contract_number = found_tags.get('contract_number')
+        logger.debug(f"📝 223-ФЗ: Найден contract_number={contract_number}, начинаю вставку в БД")
+
         # Вставляем данные в таблицу reestr_contract_223_fz
         contract_id = self.database_operations.insert_reestr_contract_223_fz(found_tags)
-        logger.info(f"Вставленная запись для 223-ФЗ имеет id: {contract_id}")
+
+        if contract_id:
+            logger.debug(f"✅ 223-ФЗ: Контракт {contract_number} успешно записан в БД (id={contract_id})")
+        else:
+            logger.warning(f"⚠️  223-ФЗ: Не удалось записать контракт {contract_number} в БД (возможно, дубликат)")
 
         return contract_id
 
@@ -173,7 +187,6 @@ class XMLParser:
 
         # Если площадка уже существует, возвращаем её ID
         if platform_id:
-            logger.info(f"Торговая площадка '{trading_platform_name}' уже существует, ID: {platform_id}")
             return platform_id
 
         # Если площадки нет в БД, создаем новую запись
@@ -186,10 +199,8 @@ class XMLParser:
         # Вставляем данные в таблицу
         platform_id = self.database_operations.insert_trading_platform(found_tags)
 
-        if platform_id:
-            logger.info(f"Добавлена торговая площадка '{trading_platform_name}' с ID: {platform_id}")
-        else:
-            logger.error(f"Не удалось добавить торговую площадку '{trading_platform_name}' в БД.")
+        if not platform_id:
+            logger.error(f"Не удалось добавить торговую площадку '{trading_platform_name}' в БД")
 
         return platform_id  # Возвращаем ID, который был найден или создан
 
@@ -203,7 +214,7 @@ class XMLParser:
         for tag_name, tag_data in links_documentation_tags.items():
             xpath = tag_data.get("xpath")
             if not xpath:
-                logger.warning(f"Отсутствует xpath в секции {tag_name}")
+                logger.error(f"Отсутствует xpath в секции {tag_name} для файла {tags_file}")
                 continue
 
             # Ищем элементы по заданному XPath
@@ -238,7 +249,6 @@ class XMLParser:
                 else:
                     logger.error(f"Неизвестный файл тегов: {tags_file}")
                     continue
-                logger.info(f"Вставленная запись в {tags_file} имеет id: {inserted_id}")
 
         # Возвращаем все найденные данные
         return found_tags
@@ -255,7 +265,6 @@ class XMLParser:
 
             if element is None or element.text is None:
                 found_tags[tag] = None
-                logger.warning(f"Не найден тег '{tag}' в XML.")
                 continue
 
             try:
@@ -268,7 +277,7 @@ class XMLParser:
                     return None
 
             except AttributeError:
-                logger.error(f"Ошибка при обработке тега '{tag}': element.text = {element.text}")
+                logger.error(f"Ошибка при обработке тега '{tag}' в файле {tags_file}: element.text = {element.text}")
                 found_tags[tag] = None
 
         # Проверяем наличие ИНН
@@ -277,24 +286,16 @@ class XMLParser:
             customer_id = self.db_id_fetcher.get_customer_id(inn)
 
             if customer_id:
-                # Закомментировать следующую часть, чтобы отключить обновление данных
-                # logger.info(f"Обновляем данные заказчика с ID {customer_id}")
-                # customer_data = found_tags
-                # self.database_operations.update_customer(customer_data, customer_id, tags_file)
-
-                # Логирование, что обновление отключено
-                logger.info(f"Обновление данных заказчика с ID {customer_id} временно отключено.")
+                # Обновление данных заказчика временно отключено
+                pass
             else:
                 # Создаем нового заказчика, если не найден
-                logger.info(f"Заказчик с ИНН {inn} не найден, создаем нового.")
                 customer_data = found_tags
                 customer_id = self.database_operations.insert_customer(customer_data, tags_file)
-                if customer_id:
-                    logger.info(f"Новый заказчик добавлен с ID {customer_id}")
-                else:
+                if not customer_id:
                     logger.error(f"Не удалось добавить нового заказчика с ИНН {inn}")
         else:
-            logger.warning("ИНН не найден в данных.")
+            logger.error("ИНН не найден в данных заказчика")
 
         return customer_id
 
@@ -305,7 +306,6 @@ class XMLParser:
         :param region_code: Код региона
         :param okpd_code: Код ОКПД для обработки
         """
-        logger.info(f"Обрабатываем файл: {file_path}")
 
         # Определяем, какой JSON файл использовать в зависимости от папки
         if xml_folder_path == self.xml_paths['reest_new_contract_archive_44_fz_xml']:
@@ -380,7 +380,6 @@ class XMLParser:
             )
 
         if not contract_id:
-            logger.info(f"Пропускаем файл {file_path} из-за отсутствия contract_number")
             return
 
         # Парсим ссылки и документацию
@@ -390,5 +389,3 @@ class XMLParser:
             contract_id,
             tags_file
         )
-
-        logger.info(f"Успешно обработан файл {file_path}")
