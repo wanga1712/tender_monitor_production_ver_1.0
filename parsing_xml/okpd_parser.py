@@ -340,7 +340,9 @@ def process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_del
                 logger.error(error_msg)
                 raise DatabaseError(error_msg, original_error=db_error) from db_error
         else:
-            # ОКПД код не найден в файле - пропускаем
+            # ОКПД код не найден в файле - ранее файл сразу удалялся.
+            # Для отладки временно оставляем такие XML-файлы на диске,
+            # чтобы можно было проанализировать их структуру.
             try:
                 from utils import stats as stats_collector
                 stats_collector.increment("files_skipped_no_okpd", 1)
@@ -350,10 +352,10 @@ def process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_del
             debug_log(
                 "OK9",
                 "okpd_parser.py:process_okpd_file",
-                "ОКПД код не найден в файле",
+                "ОКПД код не найден в файле (файл НЕ удалён, оставлен для анализа)",
                 {"file_name": file_name, "region_code": region_code},
             )
-            file_deleter.delete_single_file(file_path)
+            # ВРЕМЕННО: файл не удаляем, чтобы можно было изучить его содержимое.
             return "skipped"
 
     except Exception as e:

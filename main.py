@@ -5,14 +5,73 @@ import json
 import configparser
 from datetime import datetime, timedelta
 import os as _os_env  # локальный импорт для управления переменными окружения
+from typing import Optional
 
 # Импортируем настроенный logger (только ошибки в файл)
 from utils.logger_config import get_logger
 from utils.progress import ProgressManager
 from utils import stats as stats_collector
+from utils.memory_guard import check_memory_and_exit_if_needed, MEMORY_LIMIT_MB
 from proxy_runner import ProxyRunner
 from eis_requester import EISRequester
 from database_work.contracts_migration import migrate_completed_contracts, check_tables_exist
+
+MEMORY_LIMIT_MB = 4096  # Максимально допустимое использование памяти процессом (в МБ)
+
+
+def _get_current_memory_usage_mb() -> Optional[int]:
+    """
+    Возвращает текущий расход памяти процессом (VmRSS) в мегабайтах.
+    Работает только на Linux, при ошибке возвращает None.
+    """
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as status_file:
+            for line in status_file:
+                if line.startswith("VmRSS:"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        kb_value = int(parts[1])
+                        return kb_value // 1024
+        return None
+    except Exception:
+        return None
+
+
+def enforce_memory_limit(limit_mb: int = MEMORY_LIMIT_MB, pause_before_exit_sec: int = 10) -> None:
+    """
+    Проверяет использование памяти и мягко завершает процесс,
+    если лимит превышен.
+
+    Логика:
+    - Если RSS > limit_mb, логируем критичное сообщение,
+      выводим предупреждение в консоль, даём небольшой "grace period"
+      (по умолчанию 10 секунд) и завершаем процесс.
+    - Ожидается, что systemd перезапустит сервис (Restart=always).
+    """
+    current_mb = _get_current_memory_usage_mb()
+    if current_mb is None:
+        return
+
+    if current_mb < limit_mb:
+        return
+
+    # Лимит превышен — логируем и завершаем процесс
+    logger = get_logger()
+    warning_msg = (
+        f"Достигнут лимит памяти: {current_mb} МБ (порог {limit_mb} МБ). "
+        f"Процесс будет завершен для освобождения ресурсов."
+    )
+    logger.critical(warning_msg)
+    print("\n⚠️  Превышен лимит памяти процесса.")
+    print(f"   Текущее использование: {current_mb} МБ (порог {limit_mb} МБ).")
+    print(
+        f"   Процесс будет мягко завершен через {pause_before_exit_sec} секунд. "
+        f"Ожидается автоматический перезапуск сервисом systemd."
+    )
+    if pause_before_exit_sec > 0:
+        time.sleep(pause_before_exit_sec)
+    sys.exit(1)
+
 
 # Получаем logger
 logger = get_logger()
@@ -639,6 +698,17 @@ if __name__ == "__main__":
                     # Остаемся на текущей дате и продолжаем мониторинг
                     time.sleep(MONITORING_INTERVAL)
                     continue
+
+            # После завершения обработки даты (и перед переходом к следующей дате)
+            # проверяем использование памяти. Если оно превышает лимит,
+            # завершаем процесс, чтобы systemd мог перезапустить его с "чистой" памятью.
+            safe_context = f"после обработки даты {date_str}"
+            check_memory_and_exit_if_needed(
+                logger=logger,
+                limit_mb=MEMORY_LIMIT_MB,
+                grace_sleep_seconds=5,
+                context=safe_context,
+            )
         
         # Этот код не должен выполняться, так как цикл бесконечный
         # Но оставляем для совместимости на случай прерывания

@@ -48,15 +48,21 @@ class DatabaseManager:
         self.db_port = os.getenv("DB_PORT")
 
         try:
+            # Для локальных подключений отключаем SSL
+            connect_params = {
+                'database': self.db_name,
+                'user': self.db_user,
+                'password': self.db_password,
+                'host': self.db_host,
+                'port': self.db_port,
+                'connect_timeout': 10
+            }
+            # Если подключение к localhost, отключаем SSL
+            if self.db_host in ('localhost', '127.0.0.1'):
+                connect_params['sslmode'] = 'disable'
+            
             # Устанавливаем соединение с базой данных
-            self.connection = psycopg2.connect(
-                database=self.db_name,
-                user=self.db_user,
-                password=self.db_password,
-                host=self.db_host,
-                port=self.db_port,
-                connect_timeout=10
-            )
+            self.connection = psycopg2.connect(**connect_params)
             # Устанавливаем autocommit в False для управления транзакциями
             self.connection.autocommit = False
 

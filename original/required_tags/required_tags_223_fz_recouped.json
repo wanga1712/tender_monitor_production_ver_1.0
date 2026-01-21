@@ -1,0 +1,8 @@
+{
+  "reestr_contract": {
+    "contract_number": "contractData/purchaseNoticeNumber",
+    "delivery_start_date": "executionPeriod/startExecutionDate",
+    "delivery_end_date": "executionPeriod/endExecutionDate",
+    "final_price": "contractPosition/unitPrice"
+  }
+}

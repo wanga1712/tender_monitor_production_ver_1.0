@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+
+<html lang="ru" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>TenderMonitor &#8212; документация TenderMonitor version 1.0 Beta</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=28fe3385"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/translations.js?v=cd1d70c9"></script>
+    <link rel="index" title="Алфавитный указатель" href="genindex.html" />
+    <link rel="search" title="Поиск" href="search.html" />
+    <link rel="next" title="archive_extractor module" href="archive_extractor.html" />
+    <link rel="prev" title="TenderMonitor documentation" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="tendermonitor">
+<h1>TenderMonitor<a class="headerlink" href="#tendermonitor" title="Ссылка на этот заголовок">¶</a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="archive_extractor.html">archive_extractor module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="archive_extractor.html#archive_extractor.ArchiveExtractor"><code class="docutils literal notranslate"><span class="pre">ArchiveExtractor</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="archive_extractor.html#archive_extractor.ArchiveExtractor.unzip_files"><code class="docutils literal notranslate"><span class="pre">ArchiveExtractor.unzip_files()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="database_work.html">database_work package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="database_work.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="database_work.html#module-database_work.check_database">database_work.check_database module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="database_work.html#database_work.check_database.DatabaseCheckManager"><code class="docutils literal notranslate"><span class="pre">DatabaseCheckManager</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.check_database.DatabaseCheckManager.check_inn_and_get_id_customer"><code class="docutils literal notranslate"><span class="pre">DatabaseCheckManager.check_inn_and_get_id_customer()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.check_database.DatabaseCheckManager.check_okpd_in_db"><code class="docutils literal notranslate"><span class="pre">DatabaseCheckManager.check_okpd_in_db()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.check_database.DatabaseCheckManager.close"><code class="docutils literal notranslate"><span class="pre">DatabaseCheckManager.close()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.check_database.DatabaseCheckManager.get_db_manager"><code class="docutils literal notranslate"><span class="pre">DatabaseCheckManager.get_db_manager()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.check_database.DatabaseCheckManager.is_file_name_recorded"><code class="docutils literal notranslate"><span class="pre">DatabaseCheckManager.is_file_name_recorded()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="database_work.html#module-database_work.database_connection">database_work.database_connection module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="database_work.html#database_work.database_connection.DatabaseManager"><code class="docutils literal notranslate"><span class="pre">DatabaseManager</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_connection.DatabaseManager.close"><code class="docutils literal notranslate"><span class="pre">DatabaseManager.close()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_connection.DatabaseManager.execute_query"><code class="docutils literal notranslate"><span class="pre">DatabaseManager.execute_query()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_connection.DatabaseManager.fetch_one"><code class="docutils literal notranslate"><span class="pre">DatabaseManager.fetch_one()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="database_work.html#module-database_work.database_id_fetcher">database_work.database_id_fetcher module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.close"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.close()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.fetch_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.fetch_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_collection_codes_okpd_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_collection_codes_okpd_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_connection"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_connection()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_contractor_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_contractor_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_customer_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_customer_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_dates_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_dates_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_file_names_xml_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_file_names_xml_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_key_words_names_documentations_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_key_words_names_documentations_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_key_words_names_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_key_words_names_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_links_documentation_223_fz_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_links_documentation_223_fz_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_links_documentation_44_fz_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_links_documentation_44_fz_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_okpd_from_users_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_okpd_from_users_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_reestr_contract_223_fz_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_reestr_contract_223_fz_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_reestr_contract_44_fz_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_reestr_contract_44_fz_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_region_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_region_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_stop_words_names_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_stop_words_names_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_trading_platform_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_trading_platform_id()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_id_fetcher.DatabaseIDFetcher.get_users_id"><code class="docutils literal notranslate"><span class="pre">DatabaseIDFetcher.get_users_id()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="database_work.html#module-database_work.database_operations">database_work.database_operations module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="database_work.html#database_work.database_operations.DatabaseOperations"><code class="docutils literal notranslate"><span class="pre">DatabaseOperations</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="database_work.html#database_work.database_operations.DatabaseOperations.insert_customer"><code class="docutils literal notranslate"><span class="pre">DatabaseOperations.insert_customer()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="database_work.html#module-database_work.database_requests">database_work.database_requests module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="database_work.html#database_work.database_requests.get_region_codes"><code class="docutils literal notranslate"><span class="pre">get_region_codes()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="database_work.html#module-database_work">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="eis_requester.html">eis_requester module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="eis_requester.html#eis_requester.EISRequester"><code class="docutils literal notranslate"><span class="pre">EISRequester</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="eis_requester.html#eis_requester.EISRequester.generate_soap_request"><code class="docutils literal notranslate"><span class="pre">EISRequester.generate_soap_request()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="eis_requester.html#eis_requester.EISRequester.get_current_time_utc"><code class="docutils literal notranslate"><span class="pre">EISRequester.get_current_time_utc()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="eis_requester.html#eis_requester.EISRequester.process_requests"><code class="docutils literal notranslate"><span class="pre">EISRequester.process_requests()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="eis_requester.html#eis_requester.EISRequester.send_soap_request"><code class="docutils literal notranslate"><span class="pre">EISRequester.send_soap_request()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="file_delete.html">file_delete package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="file_delete.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="file_delete.html#module-file_delete.file_deleter">file_delete.file_deleter module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="file_delete.html#file_delete.file_deleter.FileDeleter"><code class="docutils literal notranslate"><span class="pre">FileDeleter</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="file_delete.html#file_delete.file_deleter.FileDeleter.delete_files_in_folder"><code class="docutils literal notranslate"><span class="pre">FileDeleter.delete_files_in_folder()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="file_delete.html#file_delete.file_deleter.FileDeleter.delete_single_file"><code class="docutils literal notranslate"><span class="pre">FileDeleter.delete_single_file()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="file_delete.html#module-file_delete">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="file_downloader.html">file_downloader module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="file_downloader.html#file_downloader.FileDownloader"><code class="docutils literal notranslate"><span class="pre">FileDownloader</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="file_downloader.html#file_downloader.FileDownloader.download_files"><code class="docutils literal notranslate"><span class="pre">FileDownloader.download_files()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="main.html">main module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="main.html#main.get_folder_size"><code class="docutils literal notranslate"><span class="pre">get_folder_size()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="parsing_xml.html">parsing_xml package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="parsing_xml.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parsing_xml.html#module-parsing_xml.okpd_parser">parsing_xml.okpd_parser module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="parsing_xml.html#parsing_xml.okpd_parser.process_okpd_files"><code class="docutils literal notranslate"><span class="pre">process_okpd_files()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="parsing_xml.html#module-parsing_xml.xml_parser">parsing_xml.xml_parser module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="parsing_xml.html#parsing_xml.xml_parser.XMLParser"><code class="docutils literal notranslate"><span class="pre">XMLParser</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="parsing_xml.html#parsing_xml.xml_parser.XMLParser.load_json_tags"><code class="docutils literal notranslate"><span class="pre">XMLParser.load_json_tags()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="parsing_xml.html#parsing_xml.xml_parser.XMLParser.parse_customer"><code class="docutils literal notranslate"><span class="pre">XMLParser.parse_customer()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="parsing_xml.html#parsing_xml.xml_parser.XMLParser.parse_document"><code class="docutils literal notranslate"><span class="pre">XMLParser.parse_document()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="parsing_xml.html#parsing_xml.xml_parser.XMLParser.parse_links_documentation"><code class="docutils literal notranslate"><span class="pre">XMLParser.parse_links_documentation()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="parsing_xml.html#parsing_xml.xml_parser.XMLParser.parse_reestr_contract"><code class="docutils literal notranslate"><span class="pre">XMLParser.parse_reestr_contract()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="parsing_xml.html#parsing_xml.xml_parser.XMLParser.parse_trading_platform"><code class="docutils literal notranslate"><span class="pre">XMLParser.parse_trading_platform()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="parsing_xml.html#parsing_xml.xml_parser.XMLParser.parse_xml_tags"><code class="docutils literal notranslate"><span class="pre">XMLParser.parse_xml_tags()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="parsing_xml.html#parsing_xml.xml_parser.XMLParser.remove_namespaces"><code class="docutils literal notranslate"><span class="pre">XMLParser.remove_namespaces()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="parsing_xml.html#module-parsing_xml">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="secondary_functions.html">secondary_functions module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="secondary_functions.html#secondary_functions.check_file_exists"><code class="docutils literal notranslate"><span class="pre">check_file_exists()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="secondary_functions.html#secondary_functions.get_region_codes"><code class="docutils literal notranslate"><span class="pre">get_region_codes()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="secondary_functions.html#secondary_functions.load_config"><code class="docutils literal notranslate"><span class="pre">load_config()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="secondary_functions.html#secondary_functions.load_regions"><code class="docutils literal notranslate"><span class="pre">load_regions()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="secondary_functions.html#secondary_functions.load_token"><code class="docutils literal notranslate"><span class="pre">load_token()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="stunnel_runner.html">stunnel_runner module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="stunnel_runner.html#stunnel_runner.StunnelRunner"><code class="docutils literal notranslate"><span class="pre">StunnelRunner</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="stunnel_runner.html#stunnel_runner.StunnelRunner.run_stunnel"><code class="docutils literal notranslate"><span class="pre">StunnelRunner.run_stunnel()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="test.html">test module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="test.html#test.XMLParser"><code class="docutils literal notranslate"><span class="pre">XMLParser</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="test.html#test.XMLParser.extract_required_tags_new_contract_223_fz"><code class="docutils literal notranslate"><span class="pre">XMLParser.extract_required_tags_new_contract_223_fz()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="test.html#test.XMLParser.extract_required_tags_new_contract_44_fz"><code class="docutils literal notranslate"><span class="pre">XMLParser.extract_required_tags_new_contract_44_fz()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="test.html#test.XMLParser.print_cleaned_xml"><code class="docutils literal notranslate"><span class="pre">XMLParser.print_cleaned_xml()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="test.html#test.XMLParser.process_all_files"><code class="docutils literal notranslate"><span class="pre">XMLParser.process_all_files()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="test.html#test.XMLParser.remove_namespaces"><code class="docutils literal notranslate"><span class="pre">XMLParser.remove_namespaces()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="utils.html">utils module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="utils.html#utils.XMLParser"><code class="docutils literal notranslate"><span class="pre">XMLParser</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="utils.html#utils.XMLParser.extract_archive_urls"><code class="docutils literal notranslate"><span class="pre">XMLParser.extract_archive_urls()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">TenderMonitor</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Искать" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Навигация</h3>
+<p class="caption" role="heading"><span class="caption-text">Содержание:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">TenderMonitor</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="archive_extractor.html">archive_extractor module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="database_work.html">database_work package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="eis_requester.html">eis_requester module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="file_delete.html">file_delete package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="file_downloader.html">file_downloader module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="main.html">main module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parsing_xml.html">parsing_xml package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="secondary_functions.html">secondary_functions module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="stunnel_runner.html">stunnel_runner module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="test.html">test module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="utils.html">utils module</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="предыдущая глава">TenderMonitor documentation</a></li>
+      <li>Next: <a href="archive_extractor.html" title="следующая глава">archive_extractor module</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Dimitriev_S_A.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.1</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/modules.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

@@ -74,13 +74,15 @@ class FileDownloader:
 
     def _build_proxy_url(self, original_url: str) -> str:
         """
-        Преобразует исходный URL ЕИС (https://int.zakupki.gov.ru/...)
+        Преобразует исходный URL ЕИС (https://int.zakupki.gov.ru/... или https://int44.zakupki.gov.ru/...)
         в URL, проходящий через локальный прокси (http://localhost:8080/...).
 
         Путь и query сохраняются как есть, меняются только схема и host:port.
+        НЕ меняем host (int.zakupki.gov.ru vs int44.zakupki.gov.ru) - используем тот, что пришёл от ЕИС.
         """
         parsed = urlparse(original_url)
         # Оставляем path и query нетронутыми, чтобы не поломать ticket/docRequestUid
+        # Меняем только scheme и netloc на прокси
         proxied = parsed._replace(
             scheme=self.proxy_scheme,
             netloc=self.proxy_netloc,
@@ -208,8 +210,8 @@ class FileDownloader:
                 # После скачивания сразу разархивируем файл
                 self.archive_extractor.unzip_files(save_path)
 
-                # Удаляем архив после распаковки
-                file_deleter.delete_single_file(file_path)
+                # ВРЕМЕННО: архив НЕ удаляем, чтобы можно было анализировать его содержимое на сервере
+                # file_deleter.delete_single_file(file_path)
 
                 downloaded_count += 1
                 success_count += 1
@@ -379,8 +381,8 @@ class FileDownloader:
 
                 # Распаковываем архив
                 self.archive_extractor.unzip_files(save_path)
-                # Удаляем архив
-                file_deleter.delete_single_file(file_path)
+                # ВРЕМЕННО: архив НЕ удаляем, чтобы можно было анализировать его содержимое на сервере
+                # file_deleter.delete_single_file(file_path)
 
                 downloaded_count += 1
                 if progress_manager:

@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+
+<html lang="ru" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>TenderMonitor documentation &#8212; документация TenderMonitor version 1.0 Beta</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=28fe3385"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/translations.js?v=cd1d70c9"></script>
+    <link rel="index" title="Алфавитный указатель" href="genindex.html" />
+    <link rel="search" title="Поиск" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="tendermonitor-documentation">
+<h1>TenderMonitor documentation<a class="headerlink" href="#tendermonitor-documentation" title="Ссылка на этот заголовок">¶</a></h1>
+<p>Add your content using <code class="docutils literal notranslate"><span class="pre">reStructuredText</span></code> syntax. See the
+<a class="reference external" href="https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html">reStructuredText</a>
+documentation for details.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="database_work.check_database.DatabaseCheckManager">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">database_work.check_database.</span></span><span class="sig-name descname"><span class="pre">DatabaseCheckManager</span></span><a class="headerlink" href="#database_work.check_database.DatabaseCheckManager" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Базовые классы: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Класс для управления проверкой и взаимодействием с базой данных.</p>
+<p>Этот класс включает методы для:
+- Проверки существования ОКПД в базе данных.
+- Проверки, записано ли имя файла в таблице <cite>file_names_xml</cite>.
+- Проверки ИНН заказчика и получения его ID из базы данных.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.check_database.DatabaseCheckManager.check_inn_and_get_id_customer">
+<span class="sig-name descname"><span class="pre">check_inn_and_get_id_customer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inn</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">customer_data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.check_database.DatabaseCheckManager.check_inn_and_get_id_customer" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Проверяет, существует ли ИНН в таблице <cite>customer</cite> и возвращает ID.</p>
+<p>Если ИНН не найден, запускает обновление БД. Если найден — обновляет данные.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>inn</strong> – ИНН заказчика, который необходимо проверить.</p></li>
+<li><p><strong>customer_data</strong> – Данные заказчика, которые нужно обновить или добавить в базу данных.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>ID заказчика, если ИНН найден в базе данных, иначе None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.check_database.DatabaseCheckManager.check_okpd_in_db">
+<span class="sig-name descname"><span class="pre">check_okpd_in_db</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db_manager</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">okpd_code_sub</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.check_database.DatabaseCheckManager.check_okpd_in_db" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Проверяет, существует ли код ОКПД в базе данных по <cite>sub_code</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>db_manager</strong> – Экземпляр объекта <cite>DatabaseManager</cite> для работы с БД.</p></li>
+<li><p><strong>okpd_code_sub</strong> – Код ОКПД (sub_code), который необходимо проверить.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>True, если код найден в базе данных, иначе False.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.check_database.DatabaseCheckManager.close">
+<span class="sig-name descname"><span class="pre">close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#database_work.check_database.DatabaseCheckManager.close" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Закрывает соединение с базой данных.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Результат<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.check_database.DatabaseCheckManager.get_db_manager">
+<span class="sig-name descname"><span class="pre">get_db_manager</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#database_work.check_database.DatabaseCheckManager.get_db_manager" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Возвращает экземпляр <cite>DatabaseManager</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Результат<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Экземпляр класса <cite>DatabaseManager</cite></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.check_database.DatabaseCheckManager.is_file_name_recorded">
+<span class="sig-name descname"><span class="pre">is_file_name_recorded</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db_manager</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.check_database.DatabaseCheckManager.is_file_name_recorded" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Проверяет, записано ли имя файла в таблице <cite>file_names_xml</cite>.</p>
+<p>Если файл найден в БД, останавливает выполнение функции, если не найден — запускает другую обработку.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>db_manager</strong> – Экземпляр объекта <cite>DatabaseManager</cite> для работы с БД.</p></li>
+<li><p><strong>file_name</strong> – Название файла, которое необходимо проверить.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="database_work.check_database.__init__">
+<span class="sig-prename descclassname"><span class="pre">database_work.check_database.</span></span><span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.check_database.__init__" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="database_work.database_connection.DatabaseManager">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">database_work.database_connection.</span></span><span class="sig-name descname"><span class="pre">DatabaseManager</span></span><a class="headerlink" href="#database_work.database_connection.DatabaseManager" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Базовые классы: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Класс для управления подключением и взаимодействием с базой данных.</p>
+<dl class="simple">
+<dt>Атрибуты:</dt><dd><p>connection (psycopg2.extensions.connection): Объект соединения с базой данных.
+cursor (psycopg2.extensions.cursor): Курсор для выполнения SQL-запросов к базе данных.
+db_host (str): Хост базы данных.
+db_name (str): Название базы данных.
+db_user (str): Имя пользователя базы данных.
+db_password (str): Пароль пользователя базы данных.
+db_port (str): Порт подключения к базе данных.
+zip_directory (str): Директория для хранения ZIP-архивов.</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_connection.DatabaseManager.close">
+<span class="sig-name descname"><span class="pre">close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_connection.DatabaseManager.close" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Закрывает соединение и курсор с базой данных.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Результат<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_connection.DatabaseManager.execute_query">
+<span class="sig-name descname"><span class="pre">execute_query</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fetch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_connection.DatabaseManager.execute_query" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Выполняет SQL-запрос.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query</strong> – SQL-запрос для выполнения.</p></li>
+<li><p><strong>params</strong> – Параметры для запроса.</p></li>
+<li><p><strong>fetch</strong> – Если True, возвращает результат выполнения запроса.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>Результат запроса, если <cite>fetch=True</cite>, иначе None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_connection.DatabaseManager.fetch_one">
+<span class="sig-name descname"><span class="pre">fetch_one</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_connection.DatabaseManager.fetch_one" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Выполняет SQL-запрос и возвращает одну строку результата.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query</strong> – SQL-запрос для выполнения.</p></li>
+<li><p><strong>params</strong> – Параметры для запроса.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>Одна строка результата запроса.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="database_work.database_connection.__init__">
+<span class="sig-prename descclassname"><span class="pre">database_work.database_connection.</span></span><span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_connection.__init__" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">database_work.database_id_fetcher.</span></span><span class="sig-name descname"><span class="pre">DatabaseIDFetcher</span></span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Базовые классы: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Класс для извлечения id записей из различных таблиц базы данных по заданным значениям.</p>
+<dl class="simple">
+<dt>Атрибуты:</dt><dd><p>db_manager (DatabaseManager): Объект для работы с подключением к базе данных.</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.close">
+<span class="sig-name descname"><span class="pre">close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.close" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Закрывает соединение с базой данных.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.fetch_id">
+<span class="sig-name descname"><span class="pre">fetch_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">column_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.fetch_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Универсальный метод для получения id записи по заданному значению в указанной таблице.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table_name</strong> – Название таблицы.</p></li>
+<li><p><strong>column_name</strong> – Название колонки, по которой ищем.</p></li>
+<li><p><strong>value</strong> – Значение для поиска.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_collection_codes_okpd_id">
+<span class="sig-name descname"><span class="pre">get_collection_codes_okpd_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">code</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_collection_codes_okpd_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы collection_codes_okpd по коду.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>code</strong> – Код для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_connection">
+<span class="sig-name descname"><span class="pre">get_connection</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_connection" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает соединение с базой данных.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Результат<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Объект соединения с базой данных.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_contractor_id">
+<span class="sig-name descname"><span class="pre">get_contractor_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inn</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_contractor_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы contractor по ИНН.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>inn</strong> – ИНН для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_customer_id">
+<span class="sig-name descname"><span class="pre">get_customer_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inn</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_customer_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы customer по имени (ИНН).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>inn</strong> – ИНН для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_dates_id">
+<span class="sig-name descname"><span class="pre">get_dates_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">date_value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_dates_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы dates по значению даты.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>date_value</strong> – Дата для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_file_names_xml_id">
+<span class="sig-name descname"><span class="pre">get_file_names_xml_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_file_names_xml_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы file_names_xml по имени файла.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file_name</strong> – Имя файла для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_key_words_names_documentations_id">
+<span class="sig-name descname"><span class="pre">get_key_words_names_documentations_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">keyword</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_key_words_names_documentations_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы key_words_names_documentations по ключевому слову.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>keyword</strong> – Ключевое слово для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_key_words_names_id">
+<span class="sig-name descname"><span class="pre">get_key_words_names_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">keyword</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_key_words_names_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы key_words_names по ключевому слову.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>keyword</strong> – Ключевое слово для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_links_documentation_223_fz_id">
+<span class="sig-name descname"><span class="pre">get_links_documentation_223_fz_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">link</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_links_documentation_223_fz_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы links_documentation_223_fz по ссылке.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>link</strong> – Ссылка для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_links_documentation_44_fz_id">
+<span class="sig-name descname"><span class="pre">get_links_documentation_44_fz_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">link</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_links_documentation_44_fz_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы links_documentation_44_fz по ссылке.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>link</strong> – Ссылка для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_okpd_from_users_id">
+<span class="sig-name descname"><span class="pre">get_okpd_from_users_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">code</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_okpd_from_users_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы okpd_from_users по коду.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>code</strong> – Код для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_reestr_contract_223_fz_id">
+<span class="sig-name descname"><span class="pre">get_reestr_contract_223_fz_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">contract_number</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_reestr_contract_223_fz_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы reestr_contract_223_fz по номеру контракта.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>contract_number</strong> – Номер контракта для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_reestr_contract_44_fz_id">
+<span class="sig-name descname"><span class="pre">get_reestr_contract_44_fz_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">contract_number</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_reestr_contract_44_fz_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы reestr_contract_44_fz по номеру контракта.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>contract_number</strong> – Номер контракта для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_region_id">
+<span class="sig-name descname"><span class="pre">get_region_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">region_code</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_region_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы region по коду региона.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>region_code</strong> – Код региона для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_stop_words_names_id">
+<span class="sig-name descname"><span class="pre">get_stop_words_names_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">word</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_stop_words_names_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы stop_words_names по слову.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>word</strong> – Слово для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_trading_platform_id">
+<span class="sig-name descname"><span class="pre">get_trading_platform_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_trading_platform_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы trading_platform по имени.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>name</strong> – Имя торговой платформы для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.DatabaseIDFetcher.get_users_id">
+<span class="sig-name descname"><span class="pre">get_users_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">username</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.DatabaseIDFetcher.get_users_id" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает id записи из таблицы users по имени пользователя.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>username</strong> – Имя пользователя для поиска.</p>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>id записи или None, если не найдено.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="database_work.database_id_fetcher.__init__">
+<span class="sig-prename descclassname"><span class="pre">database_work.database_id_fetcher.</span></span><span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_id_fetcher.__init__" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="database_work.database_operations.DatabaseOperations">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">database_work.database_operations.</span></span><span class="sig-name descname"><span class="pre">DatabaseOperations</span></span><a class="headerlink" href="#database_work.database_operations.DatabaseOperations" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Базовые классы: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="database_work.database_operations.DatabaseOperations.insert_customer">
+<span class="sig-name descname"><span class="pre">insert_customer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">customer_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">customer_id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_operations.DatabaseOperations.insert_customer" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Обновляет данные в таблице customer, если запись с таким ID существует.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Параметры<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>customer_data</strong> – Словарь с новыми данными клиента, включая ФИО, адреса, телефон и email.</p></li>
+<li><p><strong>customer_id</strong> – ID клиента, которого нужно обновить.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Результат<span class="colon">:</span></dt>
+<dd class="field-even"><p>ID клиента, если обновление прошло успешно, или None в случае ошибки.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="database_work.database_operations.__init__">
+<span class="sig-prename descclassname"><span class="pre">database_work.database_operations.</span></span><span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_operations.__init__" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="database_work.database_requests.get_region_codes">
+<span class="sig-prename descclassname"><span class="pre">database_work.database_requests.</span></span><span class="sig-name descname"><span class="pre">get_region_codes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#database_work.database_requests.get_region_codes" title="Ссылка на это определение">¶</a></dt>
+<dd><p>Получает список всех кодов регионов из базы данных.</p>
+<p>Выполняет запрос к базе данных, чтобы извлечь все коды регионов из таблицы <cite>region</cite>.
+Коды регионов сортируются по возрастанию.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Результат<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Список кодов регионов (list[str]), если запрос выполнен успешно.
+Пустой список, если произошла ошибка.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="#">TenderMonitor</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Искать" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Навигация</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="#">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Dimitriev_S_A.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.1</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/index.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

@@ -297,6 +297,20 @@ class EISRequester:
                         response_xml = self.send_soap_request(soap_request, region_code, doc_type, subsystem)
                         archive_urls = self.xml_parser.extract_archive_urls(response_xml)
                         
+                        debug_log(
+                            "SOAP4",
+                            "eis_requester.py:process_requests",
+                            "Извлечение archiveUrl из SOAP-ответа (44-ФЗ)",
+                            {
+                                "region_code": region_code,
+                                "subsystem": subsystem,
+                                "document_type": doc_type,
+                                "archive_urls_count": len(archive_urls) if archive_urls else 0,
+                                "archive_urls": archive_urls[:3] if archive_urls else [],  # Первые 3 для примера
+                                "response_xml_length": len(response_xml) if response_xml else 0,
+                            },
+                        )
+                        
                         if archive_urls:
                             downloaded_archives += len(archive_urls)
                             # Скачиваем и сразу обрабатываем
@@ -359,6 +373,20 @@ class EISRequester:
                         # send_soap_request будет повторять попытки при ошибках подключения до успеха
                         response_xml = self.send_soap_request(soap_request, region_code, doc_type, subsystem)
                         archive_urls = self.xml_parser.extract_archive_urls(response_xml)
+                        
+                        debug_log(
+                            "SOAP4",
+                            "eis_requester.py:process_requests",
+                            "Извлечение archiveUrl из SOAP-ответа (223-ФЗ)",
+                            {
+                                "region_code": region_code,
+                                "subsystem": subsystem,
+                                "document_type": doc_type,
+                                "archive_urls_count": len(archive_urls) if archive_urls else 0,
+                                "archive_urls": archive_urls[:3] if archive_urls else [],  # Первые 3 для примера
+                                "response_xml_length": len(response_xml) if response_xml else 0,
+                            },
+                        )
                         
                         if archive_urls:
                             downloaded_archives += len(archive_urls)

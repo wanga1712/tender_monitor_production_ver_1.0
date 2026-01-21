@@ -15,6 +15,10 @@ TimeoutStopSec=300
 StandardOutput=journal
 StandardError=journal
 
+# Ограничение памяти: при превышении ~4 ГБ процесс будет перезапущен systemd
+MemoryHigh=3G
+MemoryLimit=4G
+
 [Install]
 WantedBy=multi-user.target
 
