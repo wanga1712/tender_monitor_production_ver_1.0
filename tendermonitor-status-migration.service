@@ -1,0 +1,15 @@
+[Unit]
+Description=TenderMonitor Daily Status Migration Service
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=wanga
+WorkingDirectory=/opt/tendermonitor
+Environment="PATH=/opt/tendermonitor/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/opt/tendermonitor/venv/bin/python3 /opt/tendermonitor/database_work/daily_status_migration.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

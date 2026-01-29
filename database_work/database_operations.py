@@ -296,8 +296,16 @@ class DatabaseOperations:
             self.db_manager.connection.rollback()
             return None
 
-    def _update_existing_contract(self, contract_id, contract_data):
-        """Обновление данных существующего контракта."""
+    def _update_existing_contract(self, contract_id, contract_data, table_name=None):
+        """
+        Обновление данных существующего контракта.
+        Если table_name не указана, проверяет все статусные таблицы.
+        
+        :param contract_id: ID контракта для обновления
+        :param contract_data: Словарь с данными для обновления
+        :param table_name: Имя таблицы для обновления (опционально)
+        :return: contract_id или None при ошибке
+        """
         try:
             # Проверяем состояние транзакции - если она в состоянии ошибки, делаем rollback
             if self.db_manager.connection.status == 1:  # 1 = STATUS_IN_ERROR
@@ -305,6 +313,57 @@ class DatabaseOperations:
                     self.db_manager.connection.rollback()
                 except Exception:
                     pass
+            
+            # Если table_name не указана, ищем контракт во всех статусных таблицах
+            if not table_name:
+                from database_work.database_id_fetcher import DatabaseIDFetcher
+                db_id_fetcher = DatabaseIDFetcher()
+                
+                # Пробуем найти контракт по ID в основных таблицах
+                # Сначала проверяем основную таблицу 44-ФЗ
+                cursor = self.db_manager.connection.cursor()
+                cursor.execute("SELECT contract_number FROM reestr_contract_44_fz WHERE id = %s", (contract_id,))
+                result = cursor.fetchone()
+                
+                if result:
+                    contract_number = result[0]
+                    # Проверяем, что найденный контракт имеет тот же ID
+                    found_id, found_table = db_id_fetcher.get_reestr_contract_44_fz_id(contract_number, return_table=True)
+                    if found_id == contract_id:
+                        table_name = found_table
+                    else:
+                        # Пробуем 223-ФЗ
+                        cursor.execute("SELECT contract_number FROM reestr_contract_223_fz WHERE id = %s", (contract_id,))
+                        result = cursor.fetchone()
+                        if result:
+                            contract_number = result[0]
+                            found_id, found_table = db_id_fetcher.get_reestr_contract_223_fz_id(contract_number, return_table=True)
+                            if found_id == contract_id:
+                                table_name = found_table
+                            else:
+                                table_name = None
+                        else:
+                            table_name = None
+                else:
+                    # Пробуем 223-ФЗ
+                    cursor.execute("SELECT contract_number FROM reestr_contract_223_fz WHERE id = %s", (contract_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        contract_number = result[0]
+                        found_id, found_table = db_id_fetcher.get_reestr_contract_223_fz_id(contract_number, return_table=True)
+                        if found_id == contract_id:
+                            table_name = found_table
+                        else:
+                            table_name = None
+                    else:
+                        table_name = None
+                
+                cursor.close()
+                db_id_fetcher.close()
+                
+                # Если не нашли, используем основную таблицу 44-ФЗ по умолчанию
+                if not table_name:
+                    table_name = "reestr_contract_44_fz"
             
             with self.db_manager.connection.cursor() as cursor:
                 update_columns = []
@@ -317,7 +376,7 @@ class DatabaseOperations:
 
                 if update_columns:
                     update_query = f"""
-                        UPDATE reestr_contract_44_fz
+                        UPDATE {table_name}
                         SET {', '.join(update_columns)}
                         WHERE id = %s
                     """
@@ -329,7 +388,7 @@ class DatabaseOperations:
                 else:
                     return contract_id
         except Exception as e:
-            logger.error(f"Ошибка при обновлении контракта {contract_id}: {e}")
+            logger.error(f"Ошибка при обновлении контракта {contract_id} в таблице {table_name}: {e}")
             try:
                 self.db_manager.connection.rollback()
             except Exception:

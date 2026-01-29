@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Status Migration Timer for TenderMonitor
+Requires=tendermonitor-status-migration.service
+
+[Timer]
+OnCalendar=*-*-* 00:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
