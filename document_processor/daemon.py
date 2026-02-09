@@ -2,6 +2,8 @@ import time
 import argparse
 import signal
 import sys
+import os
+import psutil
 from pathlib import Path
 from typing import NoReturn
 
@@ -18,9 +20,11 @@ from utils.logger_config import get_logger
 logger = get_logger()
 
 class DocumentProcessorDaemon:
-    def __init__(self, worker_id: int, batch_size: int = 10, pdf_page_limit: int = 1):
+    def __init__(self, worker_id: int, batch_size: int = 10, pdf_page_limit: int = 1, memory_limit_mb: int = 4096):
         self.worker_id = worker_id
         self.batch_size = batch_size
+        self.pdf_page_limit = pdf_page_limit
+        self.memory_limit_mb = memory_limit_mb
         self.running = True
         
         # Components
@@ -37,6 +41,21 @@ class DocumentProcessorDaemon:
         logger.info("Shutdown signal received. Stopping...")
         self.running = False
 
+    def check_memory_usage(self) -> bool:
+        """Checks if memory usage exceeds the limit. Returns True if limit exceeded."""
+        try:
+            process = psutil.Process(os.getpid())
+            mem_info = process.memory_info()
+            rss_mb = mem_info.rss / 1024 / 1024
+            
+            if rss_mb > self.memory_limit_mb:
+                logger.warning(f"Memory usage ({rss_mb:.2f} MB) exceeded limit ({self.memory_limit_mb} MB). Initiating soft shutdown...")
+                return True
+        except Exception as e:
+            logger.error(f"Error checking memory usage: {e}")
+            
+        return False
+
     def run(self):
         logger.info(f"Starting Document Processor Daemon (Worker {self.worker_id})")
         
@@ -50,6 +69,10 @@ class DocumentProcessorDaemon:
         while self.running:
             try:
                 # 1. Get batch
+                if self.check_memory_usage():
+                    self.running = False
+                    break
+
                 tasks = self.queue_manager.get_next_batch(self.batch_size)
                 
                 if not tasks:
@@ -135,12 +158,14 @@ if __name__ == "__main__":
     parser.add_argument("--worker-id", type=int, required=True, help="Worker ID (1=Server, 2=Local)")
     parser.add_argument("--batch-size", type=int, default=10, help="Number of tasks to process per batch")
     parser.add_argument("--pdf-page-limit", type=int, default=1, help="Limit pages for PDF parsing")
+    parser.add_argument("--memory-limit-mb", type=int, default=4096, help="Memory limit in MB before soft restart (default: 4096)")
     
     args = parser.parse_args()
     
     daemon = DocumentProcessorDaemon(
         worker_id=args.worker_id,
         batch_size=args.batch_size,
-        pdf_page_limit=args.pdf_page_limit
+        pdf_page_limit=args.pdf_page_limit,
+        memory_limit_mb=args.memory_limit_mb
     )
     daemon.run()
