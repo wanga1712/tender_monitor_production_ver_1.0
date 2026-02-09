@@ -1,25 +1,28 @@
-# Основные зависимости для проекта TenderMonitor
-
-# HTTP запросы
-requests>=2.31.0
-
-# Работа с базами данных
+# Database
 psycopg2-binary>=2.9.9
 
-# Работа с XML
-lxml>=4.9.3
+# Requests & Networking
+requests>=2.31.0
+urllib3>=2.0.0
+certifi>=2023.7.22
 
-# Работа с конфигурационными файлами
+# Utils
 python-dotenv>=1.0.0
 configparser>=6.0.0
-
-# Логирование
 loguru>=0.7.2
-
-# Утилиты
 python-dateutil>=2.8.2
-
-# Progress bars
+tqdm>=4.66.1
 rich>=13.7.0
-tqdm>=4.66.0
 
+# XML & HTML Parsing
+lxml>=4.9.3
+beautifulsoup4>=4.12.0
+
+# Document Parsing
+pypdf>=3.17.0
+python-docx>=1.1.0
+openpyxl>=3.1.2
+pdf2image>=1.16.3
+pytesseract>=0.3.10
+# Note: pdf2image requires poppler installed
+# Note: pytesseract requires tesseract-ocr installed
