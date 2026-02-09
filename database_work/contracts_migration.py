@@ -446,7 +446,7 @@ def migrate_completed_contracts():
                         
                         db.connection.commit()
                     
-                    debug_log("C", "contracts_migration.py:433", "Батч удален", {
+                        debug_log("C", "contracts_migration.py:433", "Батч удален", {
                         "batch_num": batch_num,
                         "deleted": batch_deleted,
                         "total_deleted": total_deleted,
