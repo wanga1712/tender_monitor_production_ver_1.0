@@ -445,13 +445,13 @@ def migrate_completed_contracts():
                         batch_delete_duration = time.time() - batch_delete_start
                         
                         db.connection.commit()
-                    
-                    debug_log("C", "contracts_migration.py:433", "Батч удален", {
-                        "batch_num": batch_num,
-                        "deleted": batch_deleted,
-                        "total_deleted": total_deleted,
-                        "duration_seconds": round(batch_delete_duration, 3)
-                    })
+                        
+                        debug_log("C", "contracts_migration.py:433", "Батч удален", {
+                            "batch_num": batch_num,
+                            "deleted": batch_deleted,
+                            "total_deleted": total_deleted,
+                            "duration_seconds": round(batch_delete_duration, 3)
+                        })
                     except Exception as delete_error:
                         error_msg = str(delete_error)
                         db.connection.rollback()

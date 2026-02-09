@@ -7,7 +7,7 @@ Type=oneshot
 User=wanga
 WorkingDirectory=/opt/tendermonitor
 Environment="PATH=/opt/tendermonitor/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/opt/tendermonitor/venv/bin/python3 /opt/tendermonitor/database_work/daily_status_migration.py
+ExecStart=/opt/tendermonitor/venv/bin/python3 -m database_work.daily_status_migration
 StandardOutput=journal
 StandardError=journal
 

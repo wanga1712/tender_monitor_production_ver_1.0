@@ -69,13 +69,18 @@ def process_okpd_files(folder_path, region_code, progress_manager: Optional[Prog
 
 def process_contract_files(folder_path, db_id_fetcher, progress_manager: Optional[ProgressManager] = None):
     file_deleter = FileDeleter(folder_path)
-    xml_files = [f for f in os.listdir(folder_path) if f.endswith(".xml")]
+    
+    xml_files = []
+    for root, _, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith(".xml"):
+                xml_files.append(os.path.join(root, file))
     
     if not xml_files:
         return
     
-    for file_name in xml_files:
-        file_path = os.path.join(folder_path, file_name)
+    for file_path in xml_files:
+        file_name = os.path.basename(file_path)
         process_contract_file(file_path, file_name, db_id_fetcher, file_deleter, folder_path)
 
 
@@ -170,13 +175,18 @@ def process_contract_with_number(file_path, contract_number, folder_path):
 
 def process_okpd_files_normal(folder_path, db_id_fetcher, region_code, progress_manager: Optional[ProgressManager] = None):
     file_deleter = FileDeleter(folder_path)
-    xml_files = [f for f in os.listdir(folder_path) if f.endswith(".xml")]
+    
+    xml_files = []
+    for root, _, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith(".xml"):
+                xml_files.append(os.path.join(root, file))
 
     if not xml_files:
         debug_log(
             "OK1",
             "okpd_parser.py:process_okpd_files_normal",
-            "XML файлов не найдено в папке",
+            "XML файлов не найдено в папке (рекурсивно)",
             {"folder_path": folder_path, "region_code": region_code},
         )
         return
@@ -205,8 +215,8 @@ def process_okpd_files_normal(folder_path, db_id_fetcher, region_code, progress_
         progress_manager.update_task(process_task_name, advance=0, total=total_files)
         progress_manager.set_description(process_task_name, f"⚙️ Обработка {fz_type} | Регион {region_code} | 0/{total_files}")
     
-    for idx, file_name in enumerate(xml_files, 1):
-        file_path = os.path.join(folder_path, file_name)
+    for idx, file_path in enumerate(xml_files, 1):
+        file_name = os.path.basename(file_path)
         result = process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_deleter, folder_path)
         
         if result == "processed":
@@ -340,22 +350,20 @@ def process_okpd_file(file_path, file_name, db_id_fetcher, region_code, file_del
                 logger.error(error_msg)
                 raise DatabaseError(error_msg, original_error=db_error) from db_error
         else:
-            # ОКПД код не найден в файле - ранее файл сразу удалялся.
-            # Для отладки временно оставляем такие XML-файлы на диске,
-            # чтобы можно было проанализировать их структуру.
+            # ОКПД код не найден в файле - удаляем файл
             try:
                 from utils import stats as stats_collector
                 stats_collector.increment("files_skipped_no_okpd", 1)
             except Exception:
                 pass
-            logger.error(f"Не найден код ОКПД в файле {file_name}")
+            logger.warning(f"Не найден код ОКПД в файле {file_name}, файл удалён")
             debug_log(
                 "OK9",
                 "okpd_parser.py:process_okpd_file",
-                "ОКПД код не найден в файле (файл НЕ удалён, оставлен для анализа)",
+                "ОКПД код не найден в файле, файл удалён",
                 {"file_name": file_name, "region_code": region_code},
             )
-            # ВРЕМЕННО: файл не удаляем, чтобы можно было изучить его содержимое.
+            file_deleter.delete_single_file(file_path)
             return "skipped"
 
     except Exception as e:

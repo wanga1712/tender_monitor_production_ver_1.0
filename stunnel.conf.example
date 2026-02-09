@@ -1,0 +1,14 @@
+cert = /etc/opt/cprocsp/stunnel/1.cer
+pid = /var/opt/cprocsp/tmp/stunnel_cli.pid
+output = /var/opt/cprocsp/tmp/stunnel.log
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
+debug = 7
+client = yes
+
+[https]
+accept = localhost:8080
+connect = int.zakupki.gov.ru:443
+pincode = 0532
+CAfile = /etc/opt/cprocsp/stunnel/server_cert.cer
+verify = 0

@@ -179,16 +179,27 @@ class DatabaseIDFetcher:
         """
         return self.fetch_id("okpd_from_users", "code", code)
 
-    def get_reestr_contract_223_fz_id(self, contract_number, return_table=False):
+    def get_reestr_contract_223_fz_id(self, contract_number, return_table=False, table_name=None):
         """
         Получает id записи из таблицы reestr_contract_223_fz по номеру контракта.
-        Проверяет все статусные таблицы: основную, commission_work, unclear, awarded, completed.
-
+        
         :param contract_number: Номер контракта для поиска.
         :param return_table: Если True, возвращает tuple (id, table_name), иначе только id.
+        :param table_name: Если указана, ищет только в этой таблице. Иначе проверяет все статусные таблицы.
         :return: id записи или tuple (id, table_name), или None/(None, None), если не найдено.
         """
-        # Список таблиц для проверки (в порядке приоритета)
+        # Если указана конкретная таблица, ищем только в ней
+        if table_name:
+            contract_id = self.fetch_id(table_name, "contract_number", contract_number)
+            if contract_id:
+                if return_table:
+                    return (contract_id, table_name)
+                return contract_id
+            if return_table:
+                return (None, None)
+            return None
+        
+        # Иначе проверяем все таблицы (в порядке приоритета)
         tables = [
             "reestr_contract_223_fz",
             "reestr_contract_223_fz_commission_work",
@@ -208,16 +219,27 @@ class DatabaseIDFetcher:
             return (None, None)
         return None
 
-    def get_reestr_contract_44_fz_id(self, contract_number, return_table=False):
+    def get_reestr_contract_44_fz_id(self, contract_number, return_table=False, table_name=None):
         """
         Получает id записи из таблицы reestr_contract_44_fz по номеру контракта.
-        Проверяет все статусные таблицы: основную, commission_work, unclear, awarded, completed.
-
+        
         :param contract_number: Номер контракта для поиска.
         :param return_table: Если True, возвращает tuple (id, table_name), иначе только id.
+        :param table_name: Если указана, ищет только в этой таблице. Иначе проверяет все статусные таблицы.
         :return: id записи или tuple (id, table_name), или None/(None, None), если не найдено.
         """
-        # Список таблиц для проверки (в порядке приоритета)
+        # Если указана конкретная таблица, ищем только в ней
+        if table_name:
+            contract_id = self.fetch_id(table_name, "contract_number", contract_number)
+            if contract_id:
+                if return_table:
+                    return (contract_id, table_name)
+                return contract_id
+            if return_table:
+                return (None, None)
+            return None
+        
+        # Иначе проверяем все таблицы (в порядке приоритета)
         tables = [
             "reestr_contract_44_fz",
             "reestr_contract_44_fz_commission_work",

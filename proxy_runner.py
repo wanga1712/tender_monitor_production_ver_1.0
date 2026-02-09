@@ -16,8 +16,8 @@ class ProxyRunner:
     def __init__(self, config_path="config.ini"):
         """
         Инициализирует объект ProxyRunner, загружает настройки из конфигурации и проверяет существование необходимых файлов.
-        Поддерживает Windows (stunnel) и Linux (nginx) платформы.
-        На Linux stunnel не используется, только nginx.
+        Поддерживает Windows (stunnel) и Linux (stunnel через localhost:8080).
+        На Linux nginx НЕ используется, ожидается уже запущенный stunnel, проксирующий на ЕИС.
 
         :param config_path: Путь к файлу конфигурации (по умолчанию "config.ini").
         :raises ValueError: Если не удается загрузить конфигурацию.
@@ -35,7 +35,7 @@ class ProxyRunner:
             raise ValueError("Ошибка загрузки конфигурации!")
 
         # Получаем настройки из конфигурационного файла
-        # На Windows используется для stunnel, на Linux - не используется (там nginx)
+        # На Windows используется для stunnel, на Linux - только для совместимости
         self.stunnel_dir = self.config.get('stunnel', 'stunnel_dir', fallback=".")
         self.config_file = self.config.get('stunnel', 'config_file', fallback="stunnel.conf")
 
@@ -46,30 +46,9 @@ class ProxyRunner:
             if not os.path.exists(self.stunnel_exe):
                 raise FileNotFoundError(f"Файл {self.stunnel_exe} не найден! Проверьте путь в конфигурации.")
         elif is_linux:
-            # Linux: используем nginx (stunnel не используется)
-            # Проверяем, что nginx запущен
-            self.stunnel_exe = None  # На Linux stunnel не используется
-            try:
-                result = subprocess.run(
-                    ['systemctl', 'is-active', 'nginx'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode != 0:
-                    logger.warning("Nginx не запущен. Убедитесь, что nginx установлен и настроен как reverse proxy.")
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                # systemctl может быть недоступен, проверяем через ps
-                try:
-                    result = subprocess.run(
-                        ['pgrep', '-f', 'nginx'],
-                        capture_output=True,
-                        timeout=5
-                    )
-                    if result.returncode != 0:
-                        logger.warning("Nginx процесс не найден. Убедитесь, что nginx запущен.")
-                except:
-                    pass
+            # Linux: stunnel поднимается отдельно (systemd или вручную)
+            # Здесь мы только будем проверять доступность порта 8080 в run_proxy
+            self.stunnel_exe = None
         else:
             raise RuntimeError(f"Неподдерживаемая платформа: {self.platform}")
 
@@ -139,7 +118,7 @@ class ProxyRunner:
         """
         Запускает прокси-соединение к ЕИС.
         На Windows: запускает stunnel процесс.
-        На Linux: проверяет, что nginx работает как reverse proxy (stunnel не используется).
+        На Linux: проверяет, что stunnel уже поднят и слушает localhost:8080.
 
         :return: Процесс stunnel (Windows) или None (Linux).
         :raises Exception: При возникновении ошибки.
@@ -182,46 +161,19 @@ class ProxyRunner:
                 return proc
                 
             elif self.platform == 'linux':
-                # Linux: проверяем nginx (stunnel не используется)
-                logger.info("Linux платформа: проверяем nginx")
-                
-                # Проверяем, что nginx запущен
-                try:
-                    result = subprocess.run(
-                        ['systemctl', 'is-active', 'nginx'],
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    if result.returncode != 0:
-                        error_msg = "Nginx не запущен. Запустите: systemctl start nginx"
-                        logger.error(error_msg)
-                        raise RuntimeError(error_msg)
-                    logger.info("Nginx активен")
-                except (subprocess.TimeoutExpired, FileNotFoundError):
-                    # Проверяем через ps как fallback
-                    try:
-                        result = subprocess.run(
-                            ['pgrep', '-f', 'nginx'],
-                            capture_output=True,
-                            timeout=5
-                        )
-                        if result.returncode != 0:
-                            error_msg = "Nginx процесс не найден. Убедитесь, что nginx установлен и запущен."
-                            logger.error(error_msg)
-                            raise RuntimeError(error_msg)
-                        logger.info("Nginx процесс найден")
-                    except Exception as e:
-                        logger.warning(f"Не удалось проверить статус nginx: {e}")
-                
-                # Проверяем, что порт 8080 доступен (nginx должен проксировать на int44.zakupki.gov.ru:443)
+                # Linux: проверяем, что stunnel уже слушает localhost:8080
+                logger.info("Linux платформа: проверяем stunnel (порт 8080)")
+
                 if not self.check_port_available("localhost", 8080, timeout=10):
-                    error_msg = "Порт 8080 недоступен. Проверьте конфигурацию nginx и убедитесь, что он слушает на localhost:8080"
+                    error_msg = (
+                        "Порт 8080 недоступен. Ожидается, что cprocsp-stunnel уже запущен "
+                        "и слушает localhost:8080. Проверьте конфигурацию и логи stunnel."
+                    )
                     logger.error(error_msg)
                     raise RuntimeError(error_msg)
-                
-                logger.info("Порт 8080 доступен, nginx работает корректно")
-                return None  # На Linux не возвращаем процесс, т.к. nginx управляется systemd
+
+                logger.info("Порт 8080 доступен, stunnel работает корректно")
+                return None  # На Linux не возвращаем процесс, т.к. stunnel управляется снаружи
             else:
                 raise RuntimeError(f"Неподдерживаемая платформа: {self.platform}")
 

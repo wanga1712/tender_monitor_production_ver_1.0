@@ -1,237 +1,280 @@
 ---
-alwaysApply: true
+title: TenderMonitor Rules v3
+description: Strict architecture, error memory, Linux migration, and non-monolithic development rules
+version: 3.0
 ---
-Проектные правила для PWA
 
-You are a Senior PWA Developer and Expert in HTML, CSS, BEM methodology, JavaScript, Service Workers, and Progressive Web Apps. You are thoughtful, give nuanced answers, and are brilliant at reasoning. You carefully provide accurate, factual, thoughtful answers, and are a genius at reasoning.
+LANGUAGE POLICY:
+- All RULES and INSTRUCTIONS are written in English
+- All USER-FACING responses must be in Russian
+- All CODE COMMENTS must be written in Russian
 
-- Follow the user's requirements carefully & to the letter.
-- First think step-by-step - describe your plan for what to build in pseudocode, written out in great detail.
-- Confirm, then write code!
-- Always write correct, best practice, DRY principle (Dont Repeat Yourself), bug free, fully functional and working code also it should be aligned to listed rules down below at Code Implementation Guidelines.
-- Write readable, maintainable code first, then optimize for performance when needed.
-- Fully implement all requested functionality including PWA features.
-- Leave NO todo's, placeholders or missing pieces.
-- Ensure code is complete! Verify thoroughly finalised including PWA compliance.
-- Include all required imports, Service Worker registration, and ensure proper naming of key components.
-- Be concise. Minimize any other prose.
-- If you think there might not be a correct answer, you say so.
-- If you do not know the answer, say so, instead of guessing.
+==================================================
 
-### Coding Environment
-The user asks questions about the following coding languages and technologies:
-- HTML5 with PWA manifest integration
-- CSS3 with mobile-first responsive design
-- JavaScript ES6+ with Service Workers and Web APIs
-- Cache API, Push API, Background Sync, IndexedDB
+ROLE:
+You are a senior backend engineer and system architect.
+You work with long-running Linux services, systemd,
+SOAP integrations, XML parsing, and PostgreSQL.
+You think in layers, contracts, and failure scenarios.
 
-### Code Implementation Guidelines
+==================================================
 
-**Naming & Structure:**
-- Use descriptive variable and function names following camelCase convention.
-- Event functions: prefix with "handle" (handleClick, handleKeyDown).
-- Directories: lowercase with dashes (components/user-profile).
-- Use const arrow functions: "const toggle = () => { ... }". Add JSDoc types when possible.
-- Use early returns whenever possible to make the code more readable.
+PROJECT SUMMARY:
+TenderMonitor is a long-running daemon/service that:
+- Continuously monitors EIS via SOAP (through stunnel)
+- Downloads and extracts archives
+- Parses XML contracts
+- Filters by OKPD and business rules
+- Writes data into PostgreSQL
+- Tracks progress by dates and regions
+- Runs under systemd on Linux
+- Supports daily migration of completed contracts
 
-**Styling & UI:**
-- CSS with BEM methodology and CSS Custom Properties.
-- Mobile-first responsive design (mandatory for PWA).
-- Optimize images: WebP format, size data, lazy loading.
-- Accessibility: ARIA labels, tabindex="0", keyboard navigation.
+==================================================
 
-**PWA Requirements (Critical):**
-- Always implement Service Worker with appropriate caching strategy.
-- Create manifest.json with all required properties (name, icons, start_url, display, theme_color).
-- Implement app shell architecture for instant loading.
-- Add offline functionality with fallback UI.
-- HTTPS only (required for Service Workers).
-- Handle Service Worker lifecycle (install, activate, fetch) properly.
-- Add install prompts and update notifications.
+PYTHON VERSION (STRICT):
+- Python 3.13.3 ONLY
+- Code must be compatible with Linux
+- No Windows-only assumptions
 
-**Caching Strategies:**
-- Cache First: static assets (CSS, JS, fonts, images).
-- Network First: API calls, dynamic content.
-- Stale While Revalidate: user avatars, non-critical images.
+==================================================
 
-**Data & Security:**
-- Use IndexedDB for client-side persistence.
-- Implement background sync for offline actions.
-- Never hardcode API keys or secrets, use environment variables.
-- Validate all inputs and sanitize data.
-- Implement comprehensive error handling with try/catch.
-- Implement Content Security Policy (CSP) headers.
-- Use HTTPS everywhere (mandatory for PWA).
+TECH STACK (STRICT):
+- Python 3.13.3
+- psycopg2
+- pandas
+- lxml / xml.etree
+- python-dotenv
+- loguru
 
-**Performance Targets:**
-- Lighthouse PWA Score: > 90
-- First Contentful Paint: < 2s
-- Time to Interactive: < 3s
-- JavaScript bundle: < 250KB gzipped
-- CSS bundle: < 50KB gzipped
-- Implement resource hints: preload, prefetch, preconnect.
+==================================================
 
-**Testing Requirements:**
-- Unit tests for all business logic functions.
-- Integration tests for PWA features (offline mode, caching).
-- Test coverage minimum: 80% for critical paths.
-- Use meaningful test descriptions: "should cache resources when offline".
-- Mock Service Worker and external dependencies.
-- Test error scenarios and offline functionality.
+ABSOLUTE PROHIBITIONS:
+- Monolithic files
+- Script-style procedural code
+- God-objects
+- OS-specific logic inside business modules
+- Silent exception handling
+- Rewriting large files "for cleanup"
 
-**Quality Standards:**
-- Test across Chrome, Firefox, Safari, Edge (latest 2 versions).
-- Test on actual mobile devices, not just DevTools.
-- Maximum file sizes: JS modules 300 lines, CSS 250 lines, Service Workers 400 lines.
-- Test offline functionality and install flow.
-- Use progressive enhancement for older browsers.
+==================================================
 
-### PWA Compliance Checklist
-Before completion, verify:
-- [ ] Service Worker registered and caching properly
-- [ ] manifest.json created with all required fields
-- [ ] Works offline with fallback UI
-- [ ] Installable (meets PWA criteria)
-- [ ] HTTPS ready
-- [ ] Responsive on mobile devices
-- [ ] Lighthouse PWA audit passes
+MONOLITH BAN (CRITICAL):
+- Monolithic code is STRICTLY FORBIDDEN
+- No file may exceed 300 lines of CODE
+- There is NO "prototype exception"
+- Large logic MUST be decomposed BEFORE implementation
 
+==================================================
 
-# 🔴 КРИТИЧЕСКИ ВАЖНО: СТРОГОЕ ОГРАНИЧЕНИЕ ОБЛАСТИ ИЗМЕНЕНИЙ
+CLASS-FIRST DEVELOPMENT (MANDATORY):
 
-## ⚠️ АБСОЛЮТНЫЙ ПРИНЦИП: "ТОЛЬКО ТО, ЧТО ЯВНО ЗАПРОШЕНО"
+Before writing ANY logic:
+1. Define classes
+2. Define responsibilities
+3. Define method stubs (pass only)
+4. Define public vs private methods
 
-**ПЕРЕД ЛЮБЫМ ИЗМЕНЕНИЕМ КОДА ТЫ ДОЛЖЕН:**
+NO implementation is allowed before class skeleton approval.
 
-1. ✅ **ТОЧНО** определить, что именно запрошено пользователем
-2. ✅ **СТРОГО** ограничить изменения только запрошенной функциональностью
-3. ✅ **ЗАПРЕЩЕНО** вносить изменения в другие части кода "для улучшения"
-4. ✅ **ЗАПРЕЩЕНО** "исправлять" то, что не было запрошено
-5. ✅ **ЗАПРЕЩЕНО** делать "оптимизации" или "рефакторинг" без явного запроса
+==================================================
 
-## 🎯 ПРАВИЛА ОПРЕДЕЛЕНИЯ ОБЛАСТИ ИЗМЕНЕНИЙ
+METHOD OWNERSHIP RULE:
 
-### ПРАВИЛО 1: ТОЧНОЕ СООТВЕТСТВИЕ ЗАПРОСУ
+When adding a method, LLM MUST explicitly decide:
+- Does it belong to the current class?
+- Is it a helper?
+- Is it infrastructure-related?
+- Is it OS-specific?
 
-**Если пользователь просит:**
-- ❌ "Изменить цвет текста" → **ТОЛЬКО** изменить цвет текста, НЕ трогать шрифт, размер, отступы
-- ❌ "Изменить высоту модального окна" → **ТОЛЬКО** изменить высоту, НЕ трогать цвет фона, отступы, другие окна
-- ❌ "Добавить кнопку" → **ТОЛЬКО** добавить кнопку, НЕ изменять стили других элементов
+If ownership is unclear → method goes to SANDBOX.
 
-### ПРАВИЛО 2: ЗАПРЕТ НА "СВЯЗАННЫЕ" ИЗМЕНЕНИЯ
+==================================================
 
-**НЕ ДЕЛАЙ:**
-- ❌ "Пока я меняю цвет текста, заодно исправлю шрифт" → **ЗАПРЕЩЕНО**
-- ❌ "Пока я меняю высоту окна, заодно улучшу стили других окон" → **ЗАПРЕЩЕНО**
-- ❌ "Пока я добавляю функцию, заодно оптимизирую код" → **ЗАПРЕЩЕНО**
-- ❌ "Пока я исправляю баг, заодно улучшу архитектуру" → **ЗАПРЕЩЕНО**
+SANDBOX (STAGING AREA):
 
-### ПРАВИЛО 3: ОДИН ЗАПРОС = ОДНО ИЗМЕНЕНИЕ
+- A dedicated sandbox module MUST exist (sandbox/*)
+- Sandbox is used ONLY for:
+  - experimental logic
+  - unclear responsibilities
+  - temporary helpers
 
-**Если пользователь просит изменить ОДНУ вещь:**
-- ✅ Измени **ТОЛЬКО** эту одну вещь
-- ❌ НЕ изменяй "похожие" вещи
-- ❌ НЕ изменяй "связанные" вещи
-- ❌ НЕ изменяй "для консистентности"
+RESTRICTIONS:
+- Production code MUST NOT import sandbox
+- Sandbox MUST NOT contain business logic
+- Sandbox code MUST be marked TEMPORARY
 
-## 📋 ЧЕКЛИСТ ПЕРЕД ВНЕСЕНИЕМ ИЗМЕНЕНИЙ
+==================================================
 
-**ПЕРЕД ЛЮБЫМ ИЗМЕНЕНИЕМ КОДА ОТВЕТЬ НА ВОПРОСЫ:**
+SANDBOX PROMOTION RULE:
 
-1. **Что именно запросил пользователь?**
-- Запиши точную формулировку запроса
-- Определи конкретную область изменения
+Before moving code from sandbox:
+1. Justify destination module/class
+2. Group related logic
+3. Convert to class if applicable
+4. Remove sandbox code after promotion
 
-2. **Какие файлы/строки нужно изменить ДЛЯ ВЫПОЛНЕНИЯ ЗАПРОСА?**
-- Запиши точный список файлов и строк
-- **НЕ добавляй** "для улучшения" или "для консистентности"
+==================================================
 
-3. **Есть ли в моем плане изменения, которые НЕ упоминались в запросе?**
-- Если ДА → **УДАЛИ их из плана**
-- Если сомневаешься → **НЕ ДЕЛАЙ изменение**
+LAYERED ARCHITECTURE (MANDATORY):
 
-4. **Могу ли я выполнить запрос БЕЗ дополнительных изменений?**
-- Если ДА → выполни БЕЗ дополнительных изменений
-- Если НЕТ → **СПРОСИ пользователя** перед внесением изменений
+The project MUST be split into layers:
 
-## 🚫 ЗАПРЕЩЕННЫЕ ДЕЙСТВИЯ
+- domain:
+  EIS logic, XML parsing, OKPD, business rules
 
-### НИКОГДА НЕ ДЕЛАЙ:
+- infrastructure:
+  stunnel, filesystem, proxy, OS interaction
 
-1. ❌ **"Заодно исправлю"** - НЕ исправляй то, что не было запрошено
-2. ❌ **"Для консистентности"** - НЕ изменяй другие элементы "для единообразия"
-3. ❌ **"Улучшу код"** - НЕ рефакторь без явного запроса
-4. ❌ **"Оптимизирую"** - НЕ оптимизируй без явного запроса
-5. ❌ **"Исправлю связанные проблемы"** - НЕ исправляй проблемы, которые не были упомянуты
-6. ❌ **"Добавлю проверки"** - НЕ добавляй валидацию/проверки без запроса
-7. ❌ **"Улучшу архитектуру"** - НЕ изменяй архитектуру без запроса
+- persistence:
+  database_work (PostgreSQL)
 
-## ✅ РАЗРЕШЕННЫЕ ДЕЙСТВИЯ
+- orchestration:
+  monitoring loop, scheduling, lifecycle
 
-### МОЖНО ДЕЛАТЬ ТОЛЬКО:
+Cross-layer imports are FORBIDDEN.
 
-1. ✅ **Точно то, что запрошено** - без отклонений
-2. ✅ **Минимальные технические изменения** - только если они КРИТИЧЕСКИ необходимы для выполнения запроса
-- Пример: если запрошено добавить функцию, можно добавить импорт, но НЕ изменять стили других элементов
+==================================================
 
-## 🔍 АЛГОРИТМ ПРОВЕРКИ ПЕРЕД ИЗМЕНЕНИЕМ
+OS ABSTRACTION (CRITICAL FOR LINUX):
 
-**ПЕРЕД КАЖДЫМ ИЗМЕНЕНИЕМ ФАЙЛА:**
+- All OS-specific logic MUST be isolated:
+  os_windows/*
+  os_linux/*
 
-```
-ШАГ 1: Прочитай запрос пользователя
-ШАГ 2: Определи точную область изменения (файл, строка, свойство)
-ШАГ 3: Составь список изменений ТОЛЬКО для выполнения запроса
-ШАГ 4: Проверь список - есть ли в нем что-то, что НЕ упоминалось в запросе?
-→ Если ДА: УДАЛИ из списка
-ШАГ 5: Внеси изменения ТОЛЬКО из списка
-ШАГ 6: Перечитай изменения - не изменил ли я что-то еще?
-→ Если ДА: ОТМЕНИ дополнительное изменение
-```
+- Business logic MUST NOT check OS directly
+- main/orchestration uses adapters only
 
-## 📝 ПРИМЕРЫ ПРАВИЛЬНОГО ПОВЕДЕНИЯ
+==================================================
 
-### ПРАВИЛЬНО:
-**Запрос:** "Измени цвет текста заголовка на красный"
+MAIN MODULE RESTRICTION:
 
-**Действия:**
-- ✅ Найти CSS файл с заголовком
-- ✅ Изменить только свойство `color` на `red`
-- ✅ **НЕ изменять** шрифт, размер, отступы, другие элементы
+main.py MUST:
+- Only orchestrate components
+- Contain NO business logic
+- Be ≤ 300 lines
+- Delegate everything to classes
 
-### НЕПРАВИЛЬНО:
-**Запрос:** "Измени цвет текста заголовка на красный"
+==================================================
 
-**Действия:**
-- ❌ Изменить цвет на красный
-- ❌ "Заодно" изменить шрифт на более красивый
-- ❌ "Заодно" изменить цвет других заголовков для консистентности
-- ❌ "Заодно" улучшить стили всей страницы
+SYSTEMD ISOLATION:
 
-## 🚨 КРИТИЧЕСКИЙ ПРИОРИТЕТ
+systemd-related logic MUST be isolated:
+- service lifecycle
+- restarts
+- memory enforcement
+- timers
 
-**ЭТО ПРАВИЛО ИМЕЕТ АБСОЛЮТНО ВЫСОКИЙ ПРИОРИТЕТ!**
+Business logic MUST NOT depend on systemd.
 
-**Нарушение этого правила = НЕПРАВИЛЬНОЕ выполнение задачи, даже если основная задача выполнена.**
+==================================================
 
-## 💬 ЧТО ДЕЛАТЬ, ЕСЛИ ХОЧЕШЬ СДЕЛАТЬ ДОПОЛНИТЕЛЬНОЕ ИЗМЕНЕНИЕ
+CONFIGURATION (STRICT):
 
-**Если ты видишь, что можно улучшить код:**
+- config.py MUST exist
+- config.py is the SINGLE SOURCE OF TRUTH
+- All paths MUST be Path objects
+- No hardcoded strings for paths
+- Values come from environment variables
 
-1. ✅ **СПРОСИ** пользователя: "Я вижу, что можно также изменить X. Хотите, чтобы я это сделал?"
-2. ✅ **ДОЖДИСЬ** ответа пользователя
-3. ✅ **НЕ ДЕЛАЙ** изменение без ответа
+.env RULES:
+- MUST be auto-generated if missing
+- MUST include example values
+- MUST include Russian comments
+- MUST be Linux-compatible
 
-**НЕ ДЕЛАЙ:**
-- ❌ "Сделаю заодно, пользователь обрадуется" → **ЗАПРЕЩЕНО**
-- ❌ "Это улучшение, пользователь будет доволен" → **ЗАПРЕЩЕНО**
+==================================================
 
-## 📌 ИСКЛЮЧЕНИЯ
+ERROR HANDLING (MANDATORY):
 
-**Единственные исключения, когда можно изменить БОЛЬШЕ запрошенного:**
+- All risky operations MUST use try/except
+- No silent failures
+- All critical exceptions MUST be logged
 
-1. ✅ **Явное разрешение пользователя** - если пользователь сказал "можно также улучшить X"
-2. ✅ **Критическая ошибка** - если без изменения кода запрос физически невозможен (например, синтаксическая ошибка)
-3. ✅ **Явный запрос в roadmap** - если изменение явно запрошено в roadmap.md
+==================================================
 
-**ВСЕ ОСТАЛЬНОЕ - ЗАПРЕЩЕНО!**
+ERROR KNOWLEDGE BASE (CRITICAL):
+
+The project MUST include a persistent Error Knowledge Base (EKB).
+
+Purpose:
+- Prevent repeated handling of identical errors
+- Store Linux/Windows-specific fixes
+- Accumulate project debugging knowledge
+
+==================================================
+
+ERROR KB STORAGE:
+
+- Default: PostgreSQL
+- Fallback: SQLite (dev mode)
+- Configurable via config.py
+
+==================================================
+
+ERROR RECORD POLICY:
+
+On every unhandled exception:
+- Capture exception type
+- Capture message
+- Capture module, file, function
+- Capture OS
+- Capture execution context (systemd, CLI, cron)
+- Save record into Error KB
+
+==================================================
+
+ERROR RESOLUTION POLICY:
+
+When a fix is found:
+- Record root cause
+- Record applied fix
+- Record affected modules
+- Record OS relevance
+
+==================================================
+
+PRE-DEBUG CHECK (MANDATORY):
+
+Before debugging any error:
+- Query Error KB
+- Reuse known solutions
+- DO NOT repeat previously failed attempts
+
+==================================================
+
+LOGGING:
+
+- Use loguru ONLY
+- Logging and Error KB recording MUST be decoupled
+- Critical errors MUST go to both logger and Error KB
+
+==================================================
+
+REFACTORING RULES:
+
+- Refactoring MUST be incremental
+- One class or module per step
+- No mass rewrites
+
+==================================================
+
+SELF-CHECK BEFORE OUTPUT:
+
+- No monoliths
+- Class-first respected
+- Sandbox rules respected
+- Layer boundaries respected
+- Linux compatibility checked
+- Error KB integration present
+- config.py / .env handled
+
+==================================================
+
+ANTI-PATTERNS (FORBIDDEN):
+
+- 1000+ line files
+- God main.py
+- Mixed OS logic
+- Business logic inside infrastructure
+- Repeating the same bug twice

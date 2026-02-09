@@ -174,13 +174,27 @@ class FileDownloader:
                 # Строим URL через локальный прокси/stunnel (localhost:8080)
                 proxy_url = self._build_proxy_url(url)
 
-                # Разбираем ИСХОДНЫЙ URL для получения имени файла (чтобы имя было предсказуемым)
+                # Разбираем ИСХОДНЫЙ URL для получения имени файла.
+                # DStore ЕИС часто отдаёт путь, оканчивающийся на "compound" без расширения,
+                # но фактически возвращает ZIP-архив. Чтобы разархиватор увидел файл,
+                # принудительно добавляем расширение .zip, если его нет.
                 parsed_url = urlparse(url)
-                filename = os.path.basename(parsed_url.path) or f"file_{uuid.uuid4().hex[:8]}.zip"
+                base_name = os.path.basename(parsed_url.path)
+                if not base_name:
+                    base_name = f"file_{uuid.uuid4().hex[:8]}.zip"
+                elif "." not in base_name:
+                    # Имя без расширения (например, "compound") → добавляем .zip
+                    base_name = f"{base_name}.zip"
+                elif not base_name.lower().endswith(".zip"):
+                    # Нестандартное расширение, но знаем, что это архив → форсируем .zip
+                    base_name = f"{base_name}.zip"
+
+                filename = base_name
                 file_path = os.path.join(save_path, filename)
 
                 # Устанавливаем заголовки для запроса
                 headers = {'individualPerson_token': self.token}
+                headers["Host"] = urlparse(url).netloc
 
                 debug_log(
                     "FD3",
@@ -210,8 +224,9 @@ class FileDownloader:
                 # После скачивания сразу разархивируем файл
                 self.archive_extractor.unzip_files(save_path)
 
-                # ВРЕМЕННО: архив НЕ удаляем, чтобы можно было анализировать его содержимое на сервере
-                # file_deleter.delete_single_file(file_path)
+                # После успешной распаковки удаляем архив,
+                # чтобы не захламлять дисковое пространство.
+                file_deleter.delete_single_file(file_path)
 
                 downloaded_count += 1
                 success_count += 1
@@ -367,7 +382,15 @@ class FileDownloader:
                 proxy_url = self._build_proxy_url(url)
 
                 parsed_url = urlparse(url)
-                filename = os.path.basename(parsed_url.path) or f"file_{uuid.uuid4().hex[:8]}.zip"
+                base_name = os.path.basename(parsed_url.path)
+                if not base_name:
+                    base_name = f"file_{uuid.uuid4().hex[:8]}.zip"
+                elif "." not in base_name:
+                    base_name = f"{base_name}.zip"
+                elif not base_name.lower().endswith(".zip"):
+                    base_name = f"{base_name}.zip"
+
+                filename = base_name
                 file_path = os.path.join(save_path, filename)
 
                 headers = {'individualPerson_token': self.token}
@@ -381,8 +404,8 @@ class FileDownloader:
 
                 # Распаковываем архив
                 self.archive_extractor.unzip_files(save_path)
-                # ВРЕМЕННО: архив НЕ удаляем, чтобы можно было анализировать его содержимое на сервере
-                # file_deleter.delete_single_file(file_path)
+                # После успешной распаковки удаляем архив
+                file_deleter.delete_single_file(file_path)
 
                 downloaded_count += 1
                 if progress_manager:

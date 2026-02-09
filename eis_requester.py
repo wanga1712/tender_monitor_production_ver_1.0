@@ -126,7 +126,8 @@ class EISRequester:
         """
         headers = {
             "Content-Type": "text/xml",
-            "Authorization": f"Bearer {self.token}"
+            "Authorization": f"Bearer {self.token}",
+            "Host": "int.zakupki.gov.ru"
         }
         
         # Начальная пауза и максимальная пауза

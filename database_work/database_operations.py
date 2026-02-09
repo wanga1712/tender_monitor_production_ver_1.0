@@ -314,49 +314,52 @@ class DatabaseOperations:
                 except Exception:
                     pass
             
-            # Если table_name не указана, ищем контракт во всех статусных таблицах
+            # Если table_name не указана, ищем контракт во всех таблицах (кроме unclear/bad)
+            # Проверяем: main, commission_work, awarded, completed
             if not table_name:
                 from database_work.database_id_fetcher import DatabaseIDFetcher
                 db_id_fetcher = DatabaseIDFetcher()
                 
-                # Пробуем найти контракт по ID в основных таблицах
-                # Сначала проверяем основную таблицу 44-ФЗ
+                # Пробуем найти контракт по ID - проверяем все таблицы 44-ФЗ
                 cursor = self.db_manager.connection.cursor()
-                cursor.execute("SELECT contract_number FROM reestr_contract_44_fz WHERE id = %s", (contract_id,))
-                result = cursor.fetchone()
                 
-                if result:
-                    contract_number = result[0]
-                    # Проверяем, что найденный контракт имеет тот же ID
-                    found_id, found_table = db_id_fetcher.get_reestr_contract_44_fz_id(contract_number, return_table=True)
-                    if found_id == contract_id:
-                        table_name = found_table
-                    else:
-                        # Пробуем 223-ФЗ
-                        cursor.execute("SELECT contract_number FROM reestr_contract_223_fz WHERE id = %s", (contract_id,))
+                # Список таблиц для проверки (кроме unclear/bad)
+                tables_44 = [
+                    'reestr_contract_44_fz',
+                    'reestr_contract_44_fz_commission_work',
+                    'reestr_contract_44_fz_awarded',
+                    'reestr_contract_44_fz_completed'
+                ]
+                
+                for table in tables_44:
+                    cursor.execute(f"SELECT contract_number FROM {table} WHERE id = %s", (contract_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        contract_number = result[0]
+                        # Проверяем, что найденный контракт имеет тот же ID
+                        found_id, found_table = db_id_fetcher.get_reestr_contract_44_fz_id(contract_number, return_table=True)
+                        if found_id == contract_id:
+                            table_name = found_table
+                            break
+                
+                # Если не нашли в 44-ФЗ, проверяем 223-ФЗ
+                if not table_name:
+                    tables_223 = [
+                        'reestr_contract_223_fz',
+                        'reestr_contract_223_fz_commission_work',
+                        'reestr_contract_223_fz_awarded',
+                        'reestr_contract_223_fz_completed'
+                    ]
+                    
+                    for table in tables_223:
+                        cursor.execute(f"SELECT contract_number FROM {table} WHERE id = %s", (contract_id,))
                         result = cursor.fetchone()
                         if result:
                             contract_number = result[0]
                             found_id, found_table = db_id_fetcher.get_reestr_contract_223_fz_id(contract_number, return_table=True)
                             if found_id == contract_id:
                                 table_name = found_table
-                            else:
-                                table_name = None
-                        else:
-                            table_name = None
-                else:
-                    # Пробуем 223-ФЗ
-                    cursor.execute("SELECT contract_number FROM reestr_contract_223_fz WHERE id = %s", (contract_id,))
-                    result = cursor.fetchone()
-                    if result:
-                        contract_number = result[0]
-                        found_id, found_table = db_id_fetcher.get_reestr_contract_223_fz_id(contract_number, return_table=True)
-                        if found_id == contract_id:
-                            table_name = found_table
-                        else:
-                            table_name = None
-                    else:
-                        table_name = None
+                                break
                 
                 cursor.close()
                 db_id_fetcher.close()
@@ -400,12 +403,78 @@ class DatabaseOperations:
         return self._insert_data('trading_platform', trading_platform_data, cursor)
 
     def insert_reestr_contract_44_fz(self, contract_data, cursor=None):
+        """
+        Вставка контракта 44-ФЗ.
+        
+        Логика:
+        - Проверяем только в основной таблице и "Работа комиссии"
+        - Если найден - обновляем запись (не переносим!)
+        - Если не найден - вставляем в основную таблицу
+        - Перенос между таблицами делает только ежедневная миграция
+        """
+        contract_number = contract_data.get('contract_number')
+        if not contract_number:
+            return self._insert_data('reestr_contract_44_fz', contract_data, cursor)
+        
+        from database_work.database_id_fetcher import DatabaseIDFetcher
+        db_id_fetcher = DatabaseIDFetcher()
+        
+        # Проверяем только в двух таблицах: основная и "Работа комиссии"
+        # 1. Проверяем в основной таблице
+        existing_id = db_id_fetcher.get_reestr_contract_44_fz_id(contract_number, table_name='reestr_contract_44_fz')
+        if existing_id:
+            # Обновляем запись в основной таблице
+            logger.debug(f"Контракт 44-ФЗ {contract_number} найден в основной таблице (id={existing_id}), обновляем")
+            return self._update_existing_contract(existing_id, contract_data, table_name='reestr_contract_44_fz')
+        
+        # 2. Проверяем в "Работа комиссии"
+        existing_id = db_id_fetcher.get_reestr_contract_44_fz_id(contract_number, table_name='reestr_contract_44_fz_commission_work')
+        if existing_id:
+            # Обновляем запись в "Работа комиссии"
+            logger.debug(f"Контракт 44-ФЗ {contract_number} найден в 'Работа комиссии' (id={existing_id}), обновляем")
+            return self._update_existing_contract(existing_id, contract_data, table_name='reestr_contract_44_fz_commission_work')
+        
+        # Не найден - вставляем в основную таблицу
+        logger.debug(f"Контракт 44-ФЗ {contract_number} не найден, вставляем в основную таблицу")
         return self._insert_data('reestr_contract_44_fz', contract_data, cursor)
 
     def insert_link_documentation_44_fz(self, links_44_fz_data, cursor=None):
         return self._insert_data('links_documentation_44_fz', links_44_fz_data, cursor)
 
     def insert_reestr_contract_223_fz(self, contract_data, cursor=None):
+        """
+        Вставка контракта 223-ФЗ.
+        
+        Логика:
+        - Проверяем только в основной таблице и "Работа комиссии"
+        - Если найден - обновляем запись (не переносим!)
+        - Если не найден - вставляем в основную таблицу
+        - Перенос между таблицами делает только ежедневная миграция
+        """
+        contract_number = contract_data.get('contract_number')
+        if not contract_number:
+            return self._insert_data('reestr_contract_223_fz', contract_data, cursor)
+        
+        from database_work.database_id_fetcher import DatabaseIDFetcher
+        db_id_fetcher = DatabaseIDFetcher()
+        
+        # Проверяем только в двух таблицах: основная и "Работа комиссии"
+        # 1. Проверяем в основной таблице
+        existing_id = db_id_fetcher.get_reestr_contract_223_fz_id(contract_number, table_name='reestr_contract_223_fz')
+        if existing_id:
+            # Обновляем запись в основной таблице
+            logger.debug(f"Контракт 223-ФЗ {contract_number} найден в основной таблице (id={existing_id}), обновляем")
+            return self._update_existing_contract(existing_id, contract_data, table_name='reestr_contract_223_fz')
+        
+        # 2. Проверяем в "Работа комиссии"
+        existing_id = db_id_fetcher.get_reestr_contract_223_fz_id(contract_number, table_name='reestr_contract_223_fz_commission_work')
+        if existing_id:
+            # Обновляем запись в "Работа комиссии"
+            logger.debug(f"Контракт 223-ФЗ {contract_number} найден в 'Работа комиссии' (id={existing_id}), обновляем")
+            return self._update_existing_contract(existing_id, contract_data, table_name='reestr_contract_223_fz_commission_work')
+        
+        # Не найден - вставляем в основную таблицу
+        logger.debug(f"Контракт 223-ФЗ {contract_number} не найден, вставляем в основную таблицу")
         return self._insert_data('reestr_contract_223_fz', contract_data, cursor)
 
     def insert_link_documentation_223_fz(self, links_44_fz_data, cursor=None):
