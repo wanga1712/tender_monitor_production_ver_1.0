@@ -1,11 +1,20 @@
 import json
 import re
+import psycopg2
 from typing import List, Dict, Set
 from pathlib import Path
 from database_work.database_connection import DatabaseManager
 from utils.logger_config import get_logger
 
 logger = get_logger()
+
+REMOTE_DB_CONFIG = {
+    "host": "100.122.104.106",
+    "database": "product_catalog_2",
+    "user": "postgres",
+    "password": "0IFz3_",
+    "port": "5432"
+}
 
 class KeywordMatcher:
     def __init__(self, user_keywords_file: str = "user_keywords.json"):
@@ -15,18 +24,20 @@ class KeywordMatcher:
         self.load_keywords()
 
     def load_keywords(self):
-        """Loads keywords from DB and JSON file."""
+        """Loads keywords from Remote DB and JSON file."""
         self.keywords.clear()
         
-        # 1. Load from DB (product_catalog)
+        # 1. Load from Remote DB (product_catalog_2 -> products -> name)
         try:
-            with self.db_manager.connection.cursor() as cursor:
-                cursor.execute("SELECT keyword FROM product_catalog")
-                db_keywords = {row[0].lower().strip() for row in cursor.fetchall()}
-                self.keywords.update(db_keywords)
-                logger.info(f"Loaded {len(db_keywords)} keywords from DB")
+            logger.info("Connecting to remote product catalog database...")
+            with psycopg2.connect(**REMOTE_DB_CONFIG) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT name FROM products")
+                    db_keywords = {row[0].lower().strip() for row in cursor.fetchall() if row[0]}
+                    self.keywords.update(db_keywords)
+                    logger.info(f"Loaded {len(db_keywords)} keywords from Remote DB products table")
         except Exception as e:
-            logger.error(f"Error loading keywords from DB: {e}")
+            logger.error(f"Error loading keywords from Remote DB: {e}")
 
         # 2. Load from JSON
         if self.user_keywords_file.exists():
