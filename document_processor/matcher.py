@@ -9,7 +9,7 @@ from utils.logger_config import get_logger
 logger = get_logger()
 
 REMOTE_DB_CONFIG = {
-    "host": "100.122.104.106",
+    "host": "localhost",
     "database": "product_catalog_2",
     "user": "postgres",
     "password": "0IFz3_",
