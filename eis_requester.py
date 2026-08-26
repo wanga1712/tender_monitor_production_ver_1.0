@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import os
 import requests
 import time
 from typing import Optional
@@ -17,6 +18,7 @@ logger = get_logger()
 
 class EISRequester:
     def __init__(self, config_path: str = "config.ini", date: Optional[str] = None):
+        config_path = os.getenv("TENDERMONITOR_CONFIG", config_path)
         self.config = load_config(config_path)
         if not self.config:
             raise ValueError("Ошибка загрузки конфигурации!")
