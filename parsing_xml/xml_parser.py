@@ -22,9 +22,11 @@ class XMLParser:
         Загружает конфигурацию и путь к XML-файлам из config.ini.
         """
 
-        # Инициализируем методы для работы с базой данных внутри XMLParser
+        # Один DatabaseManager на parser: иначе каждый XML открывал 2 TCP-сессии.
         self.database_operations = DatabaseOperations()
-        self.db_id_fetcher = DatabaseIDFetcher()
+        self.db_id_fetcher = DatabaseIDFetcher(
+            db_manager=self.database_operations.db_manager
+        )
 
         self.config = load_config(config_path)
         if not self.config:
@@ -62,53 +64,80 @@ class XMLParser:
             logger.error(f"Ошибка при загрузке JSON файла с тегами {tags_path}: {e}")
             return None
 
+    def _extract_contract_number_for_links(self, root, contract_tags):
+        """????????? ????? ????????? ??? ?????????? ???????? ??????."""
+        xpath = (contract_tags or {}).get('contract_number')
+        if not xpath:
+            return None
+        element = root.find(f".//{xpath}")
+        if element is not None and element.text:
+            value = element.text.strip()
+            return value or None
+        return None
+
     def parse_reestr_contract_44_fz(self, root, tags, region_code, okpd_code, customer_id, platform_id, tags_file,
                                     file_path, xml_folder_path):
         """
         Парсит данные для таблицы реестра контрактов 44-ФЗ и вставляет в БД.
         Если поле 'auction_name' пустое, прекращает обработку и удаляет файл через FileDeleter.
         """
-        logger.debug(f"🔍 Начало парсинга 44-ФЗ контракта из файла: {file_path}")
-        
         found_tags = self._parse_common_contract_data(root, tags, region_code, okpd_code, customer_id, platform_id,
                                                       tags_file)
 
         # Проверяем, что поле auction_name не пустое
         if not found_tags.get('auction_name'):
-            logger.warning(f"⚠️  44-ФЗ: Не найдено auction_name в файле {file_path}, файл будет удален")
             # Удаляем файл через FileDeleter
             file_deleter = FileDeleter(xml_folder_path)
             file_deleter.delete_single_file(file_path)
             # Прекращаем дальнейшую обработку
             return None
 
-        contract_number = found_tags.get('contract_number', 'неизвестен')
-        logger.debug(f"📝 44-ФЗ: Найден contract_number={contract_number}, начинаю вставку в БД")
+        # Если значение поля 'auction_name' присутствует, проверяем существование контракта
+        contract_number = found_tags.get('contract_number')
+        if contract_number:
+            # Проверяем, есть ли контракт в любой таблице
+            table_name, record_id = self.db_id_fetcher.check_contract_in_any_table(
+                contract_number,
+                end_date=found_tags.get('end_date'),
+                fz_type='44',
+            )
 
-        # Если значение поля 'auction_name' присутствует, продолжаем вставку данных
-        contract_id = self.database_operations.insert_reestr_contract_44_fz(found_tags)
-
-        if contract_id:
-            logger.debug(f"✅ 44-ФЗ: Контракт {contract_number} успешно записан в БД (id={contract_id})")
+            if table_name:
+                # Контракт уже существует - обновляем соответствующую таблицу
+                if table_name == 'reestr_contract_44_fz_commission_work':
+                    self.database_operations.update_commission_work_44_full(found_tags)
+                elif table_name == 'reestr_contract_44_fz':
+                    self.database_operations._update_existing_contract(record_id, found_tags)
+                # Для других таблиц можно добавить соответствующую логику обновления
+                return record_id
+            else:
+                # Контракт не существует - вставляем новую запись
+                contract_id = self.database_operations.insert_reestr_contract_44_fz(found_tags)
+                return contract_id
         else:
-            logger.warning(f"⚠️  44-ФЗ: Не удалось записать контракт {contract_number} в БД (возможно, дубликат)")
-
-        return contract_id
+            # Нет номера контракта - не обрабатываем
+            return None
 
     def parse_reestr_contract_223_fz(self, root, tags, region_code, okpd_code, customer_id, platform_id, tags_file,
                                      file_path, xml_folder_path):
         """
         Парсит данные для таблицы реестра контрактов 223-ФЗ и вставляет в БД.
         """
-        logger.debug(f"🔍 Начало парсинга 223-ФЗ контракта из файла: {file_path}")
-        
         # Парсим общие данные контракта
         found_tags = self._parse_common_contract_data(root, tags, region_code, okpd_code, customer_id, platform_id,
                                                       tags_file)
 
+        # The 223 registration number is the public procurement identity.
+        # Source urlEIS can be a private LK link keyed by noticeInfoId.
+        if found_tags.get('contract_number'):
+            found_tags['tender_link'] = (
+                "https://zakupki.gov.ru/epz/order/notice/notice223/"
+                "common-info.html?regNumber="
+                f"{found_tags['contract_number']}"
+            )
+
         # Проверяем, если нет значения для contract_number, пропускаем обработку и удаляем файл
         if not found_tags.get('contract_number'):
-            logger.warning(f"⚠️  223-ФЗ: Не найден contract_number в файле {file_path}, файл будет удален")
             # Удаляем файл через FileDeleter
             file_deleter = FileDeleter(xml_folder_path)
             file_deleter.delete_single_file(file_path)
@@ -116,17 +145,154 @@ class XMLParser:
             return None
 
         contract_number = found_tags.get('contract_number')
-        logger.debug(f"📝 223-ФЗ: Найден contract_number={contract_number}, начинаю вставку в БД")
+        if not contract_number:
+            return None
 
-        # Вставляем данные в таблицу reestr_contract_223_fz
+        table_name, record_id = self.db_id_fetcher.check_contract_in_any_table(
+            contract_number,
+            end_date=found_tags.get('end_date'),
+            fz_type='223',
+        )
+        if table_name:
+            if table_name == 'reestr_contract_223_fz_commission_work':
+                self.database_operations.update_commission_work_223_full(found_tags)
+            elif table_name == 'reestr_contract_223_fz':
+                self.database_operations._update_existing_contract_223(record_id, found_tags)
+            return record_id
+
         contract_id = self.database_operations.insert_reestr_contract_223_fz(found_tags)
-
-        if contract_id:
-            logger.debug(f"✅ 223-ФЗ: Контракт {contract_number} успешно записан в БД (id={contract_id})")
-        else:
-            logger.warning(f"⚠️  223-ФЗ: Не удалось записать контракт {contract_number} в БД (возможно, дубликат)")
-
         return contract_id
+
+    def parse_reestr_contract_615_pp(self, root, tags, region_code, okpd_code, customer_id, platform_id, tags_file,
+                                     file_path, xml_folder_path, work_kind_tags=None, contractor_tags=None):
+        """
+        Парсит данные для таблицы реестра контрактов 615-ПП и вставляет в БД.
+        XML: pprf615types (без OKPD2; виды работ в purchaseSubjectInfo).
+        """
+        if self.config.has_section('eis_615'):
+            allowed_regions = {
+                str(r).strip()
+                for r in self.config.get('eis_615', 'regions', fallback='77,50').split(',')
+                if str(r).strip()
+            }
+            if allowed_regions and str(region_code) not in allowed_regions:
+                FileDeleter(xml_folder_path).delete_single_file(file_path)
+                return None
+
+        found_tags = self._parse_common_contract_data(root, tags, region_code, okpd_code, customer_id, platform_id,
+                                                      tags_file)
+
+        # 615-ПП не использует ОКПД
+        found_tags['okpd_id'] = None
+
+        # Виды работ (вместо ОКПД)
+        work_kind_tags = work_kind_tags or {}
+        work_kind_code = self._first_text(root, work_kind_tags.get('work_kind_code', 'purchaseSubjectInfo/code'))
+        work_kind_name = self._first_text(root, work_kind_tags.get('work_kind_name', 'purchaseSubjectInfo/name'))
+        if work_kind_code:
+            found_tags['work_kind_code'] = work_kind_code
+        if work_kind_name:
+            found_tags['work_kind_name'] = work_kind_name
+            found_tags['auction_name'] = work_kind_name
+        elif work_kind_code and not found_tags.get('auction_name'):
+            found_tags['auction_name'] = f"Вид работ 615-ПП код {work_kind_code}"
+
+        matched_kw = self._detect_waterproofing(root)
+        found_tags['is_waterproofing'] = bool(matched_kw)
+        found_tags['matched_keywords'] = ", ".join(matched_kw) if matched_kw else None
+        strict = False
+        if self.config.has_section('eis_615'):
+            strict = self.config.getboolean('eis_615', 'hydro_filter_strict', fallback=False)
+        if strict and not matched_kw:
+            logger.info(f"615-ПП: пропуск без гидроизоляции {found_tags.get('contract_number')}")
+            FileDeleter(xml_folder_path).delete_single_file(file_path)
+            return None
+
+        for date_key in ('start_date', 'end_date', 'delivery_start_date', 'delivery_end_date'):
+            found_tags[date_key] = self._normalize_date(found_tags.get(date_key))
+
+        contractor_id = None
+        contractor_tags = contractor_tags or {}
+        if contractor_tags:
+            contractor_data = {}
+            for field, xpath in contractor_tags.items():
+                contractor_data[field] = self._first_text(root, xpath)
+            if contractor_data.get('inn'):
+                if not contractor_data.get('short_name'):
+                    contractor_data['short_name'] = contractor_data.get('full_name')
+                existing = None
+                if hasattr(self.db_id_fetcher, 'get_contractor_id'):
+                    existing = self.db_id_fetcher.get_contractor_id(contractor_data['inn'])
+                if existing:
+                    contractor_id = existing
+                else:
+                    contractor_id = self.database_operations.insert_contractor(contractor_data)
+        found_tags['contractor_id'] = contractor_id
+
+        if not found_tags.get('contract_number'):
+            FileDeleter(xml_folder_path).delete_single_file(file_path)
+            return None
+
+        if not found_tags.get('auction_name'):
+            logger.error(f"615-ПП: пустой auction_name/вид работ для {found_tags.get('contract_number')}")
+            FileDeleter(xml_folder_path).delete_single_file(file_path)
+            return None
+
+        if found_tags.get('initial_price') is None:
+            found_tags['initial_price'] = 0
+        if not found_tags.get('tender_link'):
+            found_tags['tender_link'] = (
+                "https://zakupki.gov.ru/epz/capitalrepairs/card/general-info.html"
+                f"?reestr-number={found_tags['contract_number']}"
+            )
+
+        contract_number = found_tags.get('contract_number')
+        existing_id = self.db_id_fetcher.get_contract_id_from_table('reestr_contract_615_pp', contract_number)
+        if existing_id:
+            return existing_id
+
+        allowed = {
+            'contract_number', 'tender_link', 'start_date', 'end_date',
+            'delivery_start_date', 'delivery_end_date', 'auction_name',
+            'initial_price', 'final_price', 'guarantee_amount', 'customer_id',
+            'contractor_id', 'trading_platform_id', 'okpd_id', 'customer',
+            'warranty_size', 'delivery_region', 'delivery_address', 'region_id',
+            'status_id', 'work_kind_code', 'work_kind_name',
+            'is_waterproofing', 'matched_keywords',
+        }
+        insert_data = {k: v for k, v in found_tags.items() if k in allowed}
+        try:
+            return self.database_operations.insert_reestr_contract_615_pp(insert_data)
+        except Exception as e:
+            msg = str(e)
+            if 'work_kind_' in msg or 'is_waterproofing' in msg or 'matched_keywords' in msg:
+                insert_data.pop('work_kind_code', None)
+                insert_data.pop('work_kind_name', None)
+                insert_data.pop('is_waterproofing', None)
+                insert_data.pop('matched_keywords', None)
+                try:
+                    self.database_operations.db_manager.connection.rollback()
+                except Exception:
+                    pass
+                return self.database_operations.insert_reestr_contract_615_pp(insert_data)
+            raise
+
+    def _detect_waterproofing(self, root):
+        """Ищет признаки гидроизоляции во всём тексте XML договора 615."""
+        keywords_raw = "гидроизол,гидроизоляция,гидроизоляц,мембран,оклеечн,обмазочн,инъекцион,праймер битум"
+        if self.config.has_section('eis_615'):
+            keywords_raw = self.config.get('eis_615', 'hydro_keywords', fallback=keywords_raw)
+        keywords = [k.strip().lower() for k in keywords_raw.split(',') if k.strip()]
+        matched = []
+        for el in root.iter():
+            text_val = " ".join((el.text or "").split())
+            if not text_val:
+                continue
+            low = text_val.lower()
+            for kw in keywords:
+                if kw in low and kw not in matched:
+                    matched.append(kw)
+        return matched
 
     def _parse_common_contract_data(self, root, tags, region_code, okpd_code, customer_id, platform_id, tags_file):
         """
@@ -145,23 +311,38 @@ class XMLParser:
             else:
                 found_tags[tag] = None
 
-            # Обрабатываем start_date, end_date и initial_price
-            if tag == "start_date" and not found_tags[tag]:
-                found_tags[tag] = datetime.now().strftime('%Y-%m-%d')
-
-            if tag == "end_date" and not found_tags[tag]:
-                found_tags[tag] = datetime.now().strftime('%Y-%m-%d')
-
+            # Missing submission/application dates stay NULL. CURRENT_DATE is
+            # not a factual source value; update writers skip None and thus
+            # preserve an already known submission window on reingestion.
             if tag == "initial_price" and not found_tags[tag]:
                 found_tags[tag] = 0
 
         # Добавляем дополнительные параметры
         found_tags['region_id'] = self.db_id_fetcher.get_region_id(region_code)
-        found_tags['okpd_id'] = self.db_id_fetcher.get_okpd_id(okpd_code)
+        found_tags['okpd_id'] = self.db_id_fetcher.get_okpd_id(okpd_code) if okpd_code else None
         found_tags['customer_id'] = customer_id
         found_tags['trading_platform_id'] = platform_id
 
         return found_tags
+
+    @staticmethod
+    def _first_text(root, xpath: str):
+        element = root.find(f".//{xpath}")
+        if element is not None and element.text and element.text.strip():
+            return element.text.strip()
+        return None
+
+    @staticmethod
+    def _normalize_date(value):
+        if not value:
+            return None
+        text = str(value).strip()
+        if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+            day = text[:10]
+            if day.startswith("0001"):
+                return None
+            return day
+        return text
 
     def parse_trading_platform(self, root, tags):
         """
@@ -204,7 +385,7 @@ class XMLParser:
 
         return platform_id  # Возвращаем ID, который был найден или создан
 
-    def parse_links_documentation(self, root, links_documentation_tags, contract_id, tags_file):
+    def parse_links_documentation(self, root, links_documentation_tags, contract_id, tags_file, table_override=None, contract_number=None):
         """
         Парсит данные для таблицы links_documentation_44_fz (или 223_fz)
         и вызывает парсинг для таблицы printFormInfo.
@@ -236,13 +417,16 @@ class XMLParser:
                     found_tags.append({
                         "file_name": file_name,
                         "document_links": url,
-                        "contract_id": contract_id
+                        "contract_id": contract_id,
+                        "contract_number": contract_number,
                     })
 
         # Вставляем все собранные данные для соответствующей таблицы в базу
         for entry in found_tags:
-            if entry:  # Если данные не пустые
-                if tags_file == self.tags_paths['get_tags_44_new']:
+            if entry:
+                if table_override == 'links_documentation_615_pp':
+                    self.database_operations._insert_data('links_documentation_615_pp', entry)
+                elif tags_file == self.tags_paths['get_tags_44_new']:
                     inserted_id = self.database_operations.insert_link_documentation_44_fz(entry)
                 elif tags_file == self.tags_paths['get_tags_223_new']:
                     inserted_id = self.database_operations.insert_link_documentation_223_fz(entry)
@@ -270,6 +454,8 @@ class XMLParser:
             try:
                 if tags_file == self.tags_paths['get_tags_44_new']:
                     found_tags[tag] = element.text.strip() if element.text else None
+                elif tags_file == self.tags_paths.get('get_tags_615_new'):
+                    found_tags[tag] = element.text.strip() if element.text else None
                 elif tags_file == self.tags_paths['get_tags_223_new']:
                     found_tags[tag] = element.text
                 else:
@@ -286,16 +472,15 @@ class XMLParser:
             customer_id = self.db_id_fetcher.get_customer_id(inn)
 
             if customer_id:
-                # Обновление данных заказчика временно отключено
                 pass
             else:
-                # Создаем нового заказчика, если не найден
                 customer_data = found_tags
                 customer_id = self.database_operations.insert_customer(customer_data, tags_file)
                 if not customer_id:
                     logger.error(f"Не удалось добавить нового заказчика с ИНН {inn}")
         else:
             logger.error("ИНН не найден в данных заказчика")
+            customer_id = None
 
         return customer_id
 
@@ -312,6 +497,8 @@ class XMLParser:
             tags_file = self.tags_paths['get_tags_44_new']
         elif xml_folder_path == self.xml_paths['reest_new_contract_archive_223_fz_xml']:
             tags_file = self.tags_paths['get_tags_223_new']
+        elif self.config.has_section('eis_615') and xml_folder_path == self.config.get('eis_615', 'archive_xml', fallback=''):
+            tags_file = self.tags_paths.get('get_tags_615_new') or self.tags_paths['get_tags_44_new']
         else:
             logger.error(f"Неизвестная папка: {xml_folder_path}")
             return None
@@ -354,7 +541,17 @@ class XMLParser:
         platform_id = self.parse_trading_platform(root, tags.get('trading_platform', {}))
 
         # Выбираем правильную функцию для контракта
-        if tags_file == self.tags_paths['get_tags_44_new']:
+        is_615 = (self.config.has_section('eis_615') and
+                  xml_folder_path == self.config.get('eis_615', 'archive_xml', fallback=''))
+
+        if is_615:
+            contract_id = self.parse_reestr_contract_615_pp(
+                root, tags.get('reestr_contract', {}), region_code, okpd_code,
+                customer_id, platform_id, tags_file, file_path, xml_folder_path,
+                work_kind_tags=tags.get('work_kind', {}),
+                contractor_tags=tags.get('contractor', {}),
+            )
+        elif tags_file == self.tags_paths['get_tags_44_new']:
             contract_id = self.parse_reestr_contract_44_fz(
                 root,
                 tags.get('reestr_contract', {}),
@@ -383,9 +580,15 @@ class XMLParser:
             return
 
         # Парсим ссылки и документацию
+        # contract_number извлекается из XML чтобы хранить ссылки по номеру контракта,
+        # а не только по id — это позволяет найти ссылки после миграции в awarded таблицу.
+        _cn_tags = tags.get('reestr_contract', {})
+        contract_number_for_links = self._extract_contract_number_for_links(root, _cn_tags)
         links_documentation = self.parse_links_documentation(
             root,
             tags.get('links_documentation', {}),
             contract_id,
-            tags_file
+            tags_file,
+            table_override='links_documentation_615_pp' if is_615 else None,
+            contract_number=contract_number_for_links,
         )

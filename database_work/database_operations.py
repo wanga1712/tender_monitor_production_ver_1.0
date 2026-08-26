@@ -106,13 +106,6 @@ class DatabaseOperations:
                 # Никогда не падаем из-за подсчёта статистики
                 pass
 
-            # DEBUG: Логируем успешную вставку данных
-            logger.debug(f"✅ Успешно записано в БД: таблица '{table_name}', id={inserted_id}")
-            # Для важных таблиц логируем дополнительную информацию
-            if table_name in ['reestr_contract_44_fz', 'reestr_contract_223_fz']:
-                contract_number = data.get('contract_number', 'неизвестен')
-                logger.debug(f"   → Контракт {contract_number} (id={inserted_id}) записан в {table_name}")
-
             return inserted_id
 
         except IntegrityError as e:
@@ -249,42 +242,36 @@ class DatabaseOperations:
             return None
 
     def insert_file_name(self, file_name):
-        """Вставляет имя обработанного XML-файла в таблицу file_names_xml с timestamp."""
+        """Вставляет имя обработанного XML-файла в таблицу file_names_xml."""
         try:
             with self.db_manager.connection.cursor() as cursor:  # Используем контекстный менеджер
-                # Проверяем, есть ли поле processed_at в таблице
-                cursor.execute("""
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'file_names_xml' 
-                    AND column_name = 'processed_at'
-                """)
-                has_timestamp = cursor.fetchone() is not None
-                
-                if has_timestamp:
-                    insert_query = """
-                        INSERT INTO file_names_xml (file_name, processed_at)
-                        VALUES (%s, CURRENT_TIMESTAMP) RETURNING id;
-                    """
-                else:
-                    # Если поля нет, используем старый запрос (для обратной совместимости)
-                    insert_query = """
-                        INSERT INTO file_names_xml (file_name)
-                        VALUES (%s) RETURNING id;
-                    """
-                
-                cursor.execute(insert_query, (file_name,))
-                inserted_id = cursor.fetchone()[0]
+                # The legacy table has no UNIQUE(file_name) constraint and already
+                # contains historical duplicates. Serialize each filename across
+                # forward/backward workers, then insert only when it is absent.
+                cursor.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0));",
+                    (file_name,),
+                )
+                insert_query = """
+                    INSERT INTO file_names_xml (file_name)
+                    SELECT %s
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM file_names_xml WHERE file_name = %s
+                    )
+                    RETURNING id;
+                """
+                cursor.execute(insert_query, (file_name, file_name))
+                row = cursor.fetchone()
                 self.db_manager.connection.commit()
+                if row is None:
+                    return None
+                inserted_id = row[0]
 
                 # Успешно добавили имя файла — фиксируем статистику
                 try:
                     stats_collector.increment('file_names_xml', 1)
                 except Exception:
                     pass
-
-                # DEBUG: Логируем успешную вставку файла
-                logger.debug(f"✅ Файл обработан и записан в file_names_xml: {file_name[:80]}... (id={inserted_id})")
 
                 return inserted_id
 
@@ -296,16 +283,8 @@ class DatabaseOperations:
             self.db_manager.connection.rollback()
             return None
 
-    def _update_existing_contract(self, contract_id, contract_data, table_name=None):
-        """
-        Обновление данных существующего контракта.
-        Если table_name не указана, проверяет все статусные таблицы.
-        
-        :param contract_id: ID контракта для обновления
-        :param contract_data: Словарь с данными для обновления
-        :param table_name: Имя таблицы для обновления (опционально)
-        :return: contract_id или None при ошибке
-        """
+    def _update_existing_contract(self, contract_id, contract_data):
+        """Обновление данных существующего контракта."""
         try:
             # Проверяем состояние транзакции - если она в состоянии ошибки, делаем rollback
             if self.db_manager.connection.status == 1:  # 1 = STATUS_IN_ERROR
@@ -313,57 +292,6 @@ class DatabaseOperations:
                     self.db_manager.connection.rollback()
                 except Exception:
                     pass
-            
-            # Если table_name не указана, ищем контракт во всех статусных таблицах
-            if not table_name:
-                from database_work.database_id_fetcher import DatabaseIDFetcher
-                db_id_fetcher = DatabaseIDFetcher()
-                
-                # Пробуем найти контракт по ID в основных таблицах
-                # Сначала проверяем основную таблицу 44-ФЗ
-                cursor = self.db_manager.connection.cursor()
-                cursor.execute("SELECT contract_number FROM reestr_contract_44_fz WHERE id = %s", (contract_id,))
-                result = cursor.fetchone()
-                
-                if result:
-                    contract_number = result[0]
-                    # Проверяем, что найденный контракт имеет тот же ID
-                    found_id, found_table = db_id_fetcher.get_reestr_contract_44_fz_id(contract_number, return_table=True)
-                    if found_id == contract_id:
-                        table_name = found_table
-                    else:
-                        # Пробуем 223-ФЗ
-                        cursor.execute("SELECT contract_number FROM reestr_contract_223_fz WHERE id = %s", (contract_id,))
-                        result = cursor.fetchone()
-                        if result:
-                            contract_number = result[0]
-                            found_id, found_table = db_id_fetcher.get_reestr_contract_223_fz_id(contract_number, return_table=True)
-                            if found_id == contract_id:
-                                table_name = found_table
-                            else:
-                                table_name = None
-                        else:
-                            table_name = None
-                else:
-                    # Пробуем 223-ФЗ
-                    cursor.execute("SELECT contract_number FROM reestr_contract_223_fz WHERE id = %s", (contract_id,))
-                    result = cursor.fetchone()
-                    if result:
-                        contract_number = result[0]
-                        found_id, found_table = db_id_fetcher.get_reestr_contract_223_fz_id(contract_number, return_table=True)
-                        if found_id == contract_id:
-                            table_name = found_table
-                        else:
-                            table_name = None
-                    else:
-                        table_name = None
-                
-                cursor.close()
-                db_id_fetcher.close()
-                
-                # Если не нашли, используем основную таблицу 44-ФЗ по умолчанию
-                if not table_name:
-                    table_name = "reestr_contract_44_fz"
             
             with self.db_manager.connection.cursor() as cursor:
                 update_columns = []
@@ -375,8 +303,9 @@ class DatabaseOperations:
                         update_values.append(value)
 
                 if update_columns:
+                    update_columns.append("updated_at = NOW()")
                     update_query = f"""
-                        UPDATE {table_name}
+                        UPDATE reestr_contract_44_fz
                         SET {', '.join(update_columns)}
                         WHERE id = %s
                     """
@@ -388,7 +317,7 @@ class DatabaseOperations:
                 else:
                     return contract_id
         except Exception as e:
-            logger.error(f"Ошибка при обновлении контракта {contract_id} в таблице {table_name}: {e}")
+            logger.error(f"Ошибка при обновлении контракта {contract_id}: {e}")
             try:
                 self.db_manager.connection.rollback()
             except Exception:
@@ -402,14 +331,28 @@ class DatabaseOperations:
     def insert_reestr_contract_44_fz(self, contract_data, cursor=None):
         return self._insert_data('reestr_contract_44_fz', contract_data, cursor)
 
+    def insert_reestr_contract_615_pp(self, contract_data, cursor=None):
+        return self._insert_data('reestr_contract_615_pp', contract_data, cursor)
+
+    def insert_reestr_contract_615_pp_commission_work(self, contract_data, cursor=None):
+        return self._insert_data('reestr_contract_615_pp_commission_work', contract_data, cursor)
+
     def insert_link_documentation_44_fz(self, links_44_fz_data, cursor=None):
-        return self._insert_data('links_documentation_44_fz', links_44_fz_data, cursor)
+        payload = dict(links_44_fz_data)
+        payload.setdefault('contract_id', None)
+        payload.setdefault('contract_number', None)
+        # Не валидируем contract_id только против open-таблицы: контракт мог уже
+        # переехать в awarded (тот же id). Храним как есть, ищем по обоим полям.
+        return self._insert_data('links_documentation_44_fz', payload, cursor)
 
     def insert_reestr_contract_223_fz(self, contract_data, cursor=None):
         return self._insert_data('reestr_contract_223_fz', contract_data, cursor)
 
     def insert_link_documentation_223_fz(self, links_44_fz_data, cursor=None):
-        return self._insert_data('links_documentation_223_fz', links_44_fz_data, cursor)
+        payload = dict(links_44_fz_data)
+        payload.setdefault('contract_id', None)
+        payload.setdefault('contract_number', None)
+        return self._insert_data('links_documentation_223_fz', payload, cursor)
 
     def insert_contractor(self, contractor_data, cursor=None):
         """
@@ -459,4 +402,186 @@ class DatabaseOperations:
                 # Для не-строковых значений оставляем как есть
                 normalized_data[key] = value
         
+        # short_name NOT NULL: если пусто - берём full_name (оба поля NOT NULL в схеме)
+        if not normalized_data.get('short_name') and normalized_data.get('full_name'):
+            normalized_data['short_name'] = normalized_data['full_name'][:500]
+
         return self._insert_data('contractor', normalized_data, cursor)
+
+    def update_commission_work_44_by_number(self, contract_number, delivery_start_date=None, delivery_end_date=None):
+        try:
+            with self.db_manager.connection.cursor() as cursor:
+                fields = []
+                values = []
+                if delivery_start_date:
+                    fields.append("delivery_start_date = %s")
+                    values.append(delivery_start_date)
+                if delivery_end_date:
+                    fields.append("delivery_end_date = %s")
+                    values.append(delivery_end_date)
+                if fields:
+                    query = f"""
+                        UPDATE reestr_contract_44_fz_commission_work
+                        SET {', '.join(fields)}
+                        WHERE contract_number = %s
+                    """
+                    values.append(contract_number)
+                    cursor.execute(query, tuple(values))
+                    self.db_manager.connection.commit()
+                    return True
+                return False
+        except Exception as e:
+            logger.error(f"Ошибка обновления commission_work 44 по номеру {contract_number}: {e}")
+            try:
+                self.db_manager.connection.rollback()
+            except Exception:
+                pass
+            return False
+
+    def update_commission_work_44_full(self, contract_data):
+        """
+        Полное обновление записи в reestr_contract_44_fz_commission_work.
+        Обновляет все поля, включая подрядчика, стоимость и другие данные.
+        """
+        try:
+            with self.db_manager.connection.cursor() as cursor:
+                update_fields = []
+                update_values = []
+                
+                # Список полей, которые могут обновляться
+                possible_fields = [
+                    'contract_number', 'contract_price', 'customer_name', 
+                    'contractor_id', 'delivery_start_date', 'delivery_end_date',
+                    'contract_subject', 'region_id', 'okpd2_code', 'okved2_code',
+                    'customer_inn', 'contractor_inn', 'trading_platform_id'
+                ]
+                
+                for field in possible_fields:
+                    if field in contract_data and contract_data[field] is not None:
+                        update_fields.append(f"{field} = %s")
+                        update_values.append(contract_data[field])
+                
+                if update_fields:
+                    update_query = f"""
+                        UPDATE reestr_contract_44_fz_commission_work
+                        SET {', '.join(update_fields)}
+                        WHERE contract_number = %s
+                    """
+                    update_values.append(contract_data['contract_number'])
+                    cursor.execute(update_query, tuple(update_values))
+                    self.db_manager.connection.commit()
+                    return True
+                return False
+        except Exception as e:
+            logger.error(f"Ошибка полного обновления commission_work 44 для контракта {contract_data.get('contract_number')}: {e}")
+            try:
+                self.db_manager.connection.rollback()
+            except Exception:
+                pass
+            return False
+
+    def update_commission_work_223_by_number(self, contract_number, delivery_start_date=None, delivery_end_date=None):
+        try:
+            with self.db_manager.connection.cursor() as cursor:
+                fields = []
+                values = []
+                if delivery_start_date:
+                    fields.append("delivery_start_date = %s")
+                    values.append(delivery_start_date)
+                if delivery_end_date:
+                    fields.append("delivery_end_date = %s")
+                    values.append(delivery_end_date)
+                if fields:
+                    query = f"""
+                        UPDATE reestr_contract_223_fz_commission_work
+                        SET {', '.join(fields)}
+                        WHERE contract_number = %s
+                    """
+                    values.append(contract_number)
+                    cursor.execute(query, tuple(values))
+                    self.db_manager.connection.commit()
+                    return True
+                return False
+        except Exception as e:
+            logger.error(f"Ошибка обновления commission_work 223 по номеру {contract_number}: {e}")
+            try:
+                self.db_manager.connection.rollback()
+            except Exception:
+                pass
+            return False
+
+    def update_commission_work_223_full(self, contract_data):
+        try:
+            with self.db_manager.connection.cursor() as cursor:
+                update_fields = []
+                update_values = []
+
+                possible_fields = [
+                    'contract_number', 'contract_price', 'customer_name',
+                    'contractor_id', 'delivery_start_date', 'delivery_end_date',
+                    'contract_subject', 'region_id', 'okpd2_code', 'okved2_code',
+                    'customer_inn', 'contractor_inn', 'trading_platform_id'
+                ]
+
+                for field in possible_fields:
+                    if field in contract_data and contract_data[field] is not None:
+                        update_fields.append(f"{field} = %s")
+                        update_values.append(contract_data[field])
+
+                if update_fields:
+                    update_query = f"""
+                        UPDATE reestr_contract_223_fz_commission_work
+                        SET {', '.join(update_fields)}
+                        WHERE contract_number = %s
+                    """
+                    update_values.append(contract_data['contract_number'])
+                    cursor.execute(update_query, tuple(update_values))
+                    self.db_manager.connection.commit()
+                    return True
+                return False
+        except Exception as e:
+            logger.error(
+                f"Ошибка полного обновления commission_work 223 для контракта {contract_data.get('contract_number')}: {e}"
+            )
+            try:
+                self.db_manager.connection.rollback()
+            except Exception:
+                pass
+            return False
+
+    def _update_existing_contract_223(self, contract_id, contract_data):
+        try:
+            if self.db_manager.connection.status == 1:
+                try:
+                    self.db_manager.connection.rollback()
+                except Exception:
+                    pass
+
+            with self.db_manager.connection.cursor() as cursor:
+                update_columns = []
+                update_values = []
+
+                for column, value in contract_data.items():
+                    if value is not None:
+                        update_columns.append(f"{column} = %s")
+                        update_values.append(value)
+
+                if update_columns:
+                    update_columns.append("updated_at = NOW()")
+                    update_query = f"""
+                        UPDATE reestr_contract_223_fz
+                        SET {', '.join(update_columns)}
+                        WHERE id = %s
+                    """
+                    update_values.append(contract_id)
+                    cursor.execute(update_query, tuple(update_values))
+                    self.db_manager.connection.commit()
+                    return True
+                return False
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении данных в reestr_contract_223_fz: {e}")
+            try:
+                self.db_manager.connection.rollback()
+            except Exception:
+                pass
+            return False
