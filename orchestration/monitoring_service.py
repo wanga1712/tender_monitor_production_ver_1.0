@@ -27,6 +27,8 @@ class MonitoringConfig:
     today: datetime
     monitoring_interval_seconds: int
     eis_data_upload_hour: int
+    direction: str = "forward"  # forward | backward
+    stop_before_date: datetime | None = None  # for backward: stop when date < this
 
 
 class TenderMonitorService:
@@ -80,153 +82,179 @@ class TenderMonitorService:
     def run(self) -> None:
         """
         Запускает основной бесконечный цикл обработки дат и мониторинга.
-
-        ВНИМАНИЕ:
-        - Ожидается, что все критические ошибки БД будут обрабатываться
-          на уровне вызывающего кода (main.py) через обёртки/try-except.
         """
+        import json
+        import os
+        from datetime import datetime, timedelta
+
+        class PendingDatesManager:
+            def __init__(self, filepath="/opt/tendermonitor/pending_dates.json"):
+                self.filepath = filepath
+                self.pending = {}
+                self.load()
+
+            def load(self):
+                if os.path.exists(self.filepath):
+                    try:
+                        with open(self.filepath, "r") as f:
+                            self.pending = json.load(f)
+                    except:
+                        self.pending = {}
+
+            def save(self):
+                with open(self.filepath, "w") as f:
+                    json.dump(self.pending, f, indent=4)
+
+            def add_pending(self, date_str: str):
+                if date_str not in self.pending:
+                    self.pending[date_str] = {
+                        "first_seen": datetime.now().isoformat(),
+                        "last_tried": datetime.now().isoformat(),
+                        "retries": 0
+                    }
+                    self.save()
+
+            def remove_pending(self, date_str: str):
+                if date_str in self.pending:
+                    del self.pending[date_str]
+                    self.save()
+
+            def get_date_to_retry(self) -> str | None:
+                now = datetime.now()
+                for date_str, info in self.pending.items():
+                    try:
+                        last_tried = datetime.fromisoformat(info["last_tried"])
+                        if now - last_tried > timedelta(hours=12):
+                            return date_str
+                    except:
+                        pass
+                return None
+
+            def mark_tried(self, date_str: str):
+                if date_str in self.pending:
+                    self.pending[date_str]["last_tried"] = datetime.now().isoformat()
+                    self.pending[date_str]["retries"] += 1
+                    self.save()
+
+        pending_mgr = PendingDatesManager()
+
         processed_count = 0
         error_count = 0
 
         initial_date = self._cfg.start_date
-        today = self._cfg.today
-        total_days = (today - initial_date).days + 1
+        direction = (self._cfg.direction or "forward").lower()
+        stop_before = self._cfg.stop_before_date
 
-        if total_days <= 0:
-            print(
-                f"⚠️  Внимание: начальная дата ({initial_date.strftime('%Y-%m-%d')}) "
-                f"больше или равна текущей дате ({today.strftime('%Y-%m-%d')})"
-            )
-            return
-
-        print(f"\n📅 ПЛАН ОБРАБОТКИ:")
-        print(f"   Начальная дата: {initial_date.strftime('%Y-%m-%d')}")
-        print(f"   Конечная дата (сегодня): {today.strftime('%Y-%m-%d')}")
-        print(f"   Всего дней для обработки: {total_days}")
-        print(
-            "   ℹ️  Файлы проверяются в БД - уже обработанные файлы будут автоматически пропущены"
-        )
-        print(
-            "   ℹ️  Прогресс обработки регионов кешируется - при перезапуске будет продолжение"
-        )
-        print(f"\n{'=' * 60}\n")
+        if direction == "backward":
+            if stop_before is None:
+                print("⚠️  backward: не задан stop_before_date")
+                return
+            total_days = (initial_date - stop_before).days
+            if total_days <= 0:
+                print(f"⚠️  backward: старт не позже стопа")
+                return
+        else:
+            print(f"\n📅 ПЛАН ОБРАБОТКИ FORWARD:")
+            print(f"   Начальная дата: {initial_date.strftime('%Y-%m-%d')}")
 
         date_to_process = initial_date
         current_day = 0
-        monitoring_mode = False
 
         while True:
-            # Проверяем, достигли ли мы вчерашней даты (today - 1)
-            yesterday = datetime.today() - timedelta(days=1)
-            if date_to_process >= today:
-                if not monitoring_mode:
-                    monitoring_mode = True
-                    date_to_process = yesterday
+            # Re-evaluate physical calendar today
+            today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+
+            # Retry pending dates if any (only in forward mode)
+            if direction != "backward":
+                retry_date = pending_mgr.get_date_to_retry()
+                if retry_date:
+                    print(f"\n🔄 [RETRY] Попытка обработки пропущенной даты: {retry_date}")
+                    self._process_single_date(retry_date, is_retry=True, pending_mgr=pending_mgr)
+                    pending_mgr.mark_tried(retry_date)
+                    continue
+
+            if direction == "backward":
+                if date_to_process < stop_before:
+                    print(f"\n✅ BACKWARD: достигнута граница {stop_before.strftime('%Y-%m-%d')}, выход")
+                    return
+            else:
+                # В FORWARD режиме: если date_to_process >= сегодня, данных быть не может
+                if date_to_process >= today:
                     print(f"\n{'=' * 60}")
-                    print(f"📅 ДОСТИГНУТА ВЧЕРАШНЯЯ ДАТА: {yesterday.strftime('%Y-%m-%d')}")
+                    print(f"📅 ОЖИДАНИЕ: дата {date_to_process.strftime('%Y-%m-%d')} ещё не наступила/не завершилась.")
+                    print(f"🔄 Программа засыпает на {self._cfg.monitoring_interval_seconds // 60} минут...")
                     print(f"{'=' * 60}")
-                    print("🔄 Переход в режим непрерывного мониторинга...")
-                    print(f"ℹ️  Программа будет ждать появления данных за {yesterday.strftime('%Y-%m-%d')}")
-                    self._logger.info(f"Достигнута вчерашняя дата {yesterday.strftime('%Y-%m-%d')}, переход в режим мониторинга")
+                    import time
+                    time.sleep(self._cfg.monitoring_interval_seconds)
+                    continue
 
             current_day += 1
             date_str = date_to_process.strftime("%Y-%m-%d")
 
-            # В режиме мониторинга для вчерашней даты сначала проверяем наличие данных
-            if monitoring_mode:
-                if not self._check_data_available(date_str):
-                    self._monitor_for_new_data(date_to_process)
-                    continue
-
             print(f"\n{'=' * 60}")
-            if monitoring_mode:
-                print(f"📅 [МОНИТОРИНГ] ОБРАБОТКА ДАТЫ: {date_str}")
-            else:
-                print(f"📅 [{current_day}/{total_days}] ОБРАБОТКА ДАТЫ: {date_str}")
+            print(f"📅 ОБРАБОТКА ДАТЫ: {date_str}")
             print(f"{'=' * 60}")
-            self._logger.info(f"Начало обработки даты {date_str}")
 
-            # Обновляем дату в конфиге только для текущей обработки
+            # Обновляем дату в конфиге только для основной обработки (не для retry)
             self._update_config_date(date_to_process)
-            self._logger.info(f"Дата в config.ini обновлена на {date_str} для обработки")
 
-            # Загружаем прогресс обработки регионов
-            processed_regions = self._get_processed_regions_for_date(date_str)
-            if processed_regions:
-                self._logger.info(
-                    f"Найдено уже обработанных регионов для даты {date_str}: {len(processed_regions)}"
-                )
-
-            try:
-                # Снимок статистики до обработки
-                stats_before = self._get_stats_snapshot()
-
-                # Создаём EISRequester на конкретную дату
-                eis_requester = self._create_eis_requester(date_str)
-
-                # Callback для сохранения прогресса
-                def on_region_processed(region_code: int) -> None:
-                    self._mark_region_processed(date_str, region_code)
-                    self._logger.debug(
-                        f"Прогресс сохранен: регион {region_code} для даты {date_str}"
-                    )
-
-                # Обрабатываем запросы с учётом уже обработанных регионов
-                eis_requester.process_requests(
-                    processed_regions=processed_regions,
-                    on_region_processed=on_region_processed,
-                )
-
-                # Снимок статистики после обработки
-                stats_after = self._get_stats_snapshot()
-
-                date_stats: Dict[str, int] = {}
-                skipped_stats: Dict[str, int] = {}
-
-                all_keys = set(stats_before.keys()) | set(stats_after.keys())
-                for key in all_keys:
-                    before_value = stats_before.get(key, 0)
-                    after_value = stats_after.get(key, 0)
-                    delta = after_value - before_value
-                    if delta > 0:
-                        if "_skipped" in key:
-                            skipped_stats[key] = delta
-                        else:
-                            date_stats[key] = delta
-
-                processed_count += 1
-
-                # Очищаем прогресс регионов после успешной обработки
-                self._clear_region_progress_for_date(date_str)
-                self._logger.info(
-                    f"Прогресс обработки регионов для даты {date_str} очищен"
-                )
-
-                # Выводим краткую статистику
-                self._print_date_stats(date_str, processed_count, total_days, date_stats, skipped_stats)
-                self._logger.info(f"Дата {date_str} успешно обработана")
-
-            except Exception:
-                # Ошибки внутри обработки даты логируются на верхнем уровне main.py,
-                # здесь считаем только факт ошибки.
-                error_count += 1
-                raise
-            finally:
-                # Перед переходом к следующей дате вызываем внешний контроль памяти
-                safe_context = f"после обработки даты {date_str}"
-                self._on_memory_check(safe_context)
+            self._process_single_date(date_str, is_retry=False, pending_mgr=pending_mgr)
 
             # Переход к следующей дате
-            if not monitoring_mode:
-                date_to_process += timedelta(days=1)
+            if direction == "backward":
+                date_to_process -= timedelta(days=1)
             else:
-                # В режиме мониторинга всегда переходим к следующему дню после обработки
                 date_to_process += timedelta(days=1)
-                next_date_str = date_to_process.strftime('%Y-%m-%d')
-                print(
-                    f"📅 Переход к следующей дате для мониторинга: {next_date_str}"
-                )
-                self._logger.info(f"Переход к следующей дате: {next_date_str}")
+
+    def _process_single_date(self, date_str: str, is_retry: bool, pending_mgr) -> None:
+        processed_regions = self._get_processed_regions_for_date(date_str)
+        try:
+            stats_before = self._get_stats_snapshot()
+            eis_requester = self._create_eis_requester(date_str)
+
+            def on_region_processed(region_code: int) -> None:
+                self._mark_region_processed(date_str, region_code)
+
+            eis_requester.process_requests(
+                processed_regions=processed_regions,
+                on_region_processed=on_region_processed,
+            )
+
+            stats_after = self._get_stats_snapshot()
+
+            date_stats = {}
+            skipped_stats = {}
+            all_keys = set(stats_before.keys()) | set(stats_after.keys())
+            for key in all_keys:
+                delta = stats_after.get(key, 0) - stats_before.get(key, 0)
+                if delta > 0:
+                    if "_skipped" in key:
+                        skipped_stats[key] = delta
+                    else:
+                        date_stats[key] = delta
+
+            # Check if any XMLs were successfully downloaded and processed
+            xmls_added = date_stats.get("file_names_xml", 0)
+            contracts_added = date_stats.get("reestr_contract_44_fz", 0) + date_stats.get("reestr_contract_223_fz", 0)
+
+            if xmls_added == 0 and contracts_added == 0:
+                print(f"⚠️  ДЛЯ ДАТЫ {date_str} ДАННЫЕ НЕ НАЙДЕНЫ (0 файлов).")
+                if not is_retry:
+                    print(f"📌 Добавляем {date_str} в очередь отложенной проверки (PENDING).")
+                    pending_mgr.add_pending(date_str)
+            else:
+                if is_retry:
+                    print(f"✅ Успешно извлечены данные для пропущенной даты {date_str}!")
+                    pending_mgr.remove_pending(date_str)
+
+            self._clear_region_progress_for_date(date_str)
+            self._print_date_stats(date_str, 1, 1, date_stats, skipped_stats)
+
+        except Exception as e:
+            self._logger.error(f"Ошибка при обработке {date_str}: {e}")
+            raise
+        finally:
+            self._on_memory_check(f"после обработки даты {date_str}")
 
     def _print_date_stats(
         self,

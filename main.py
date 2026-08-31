@@ -98,13 +98,42 @@ def clear_region_progress_for_date(date_str):
         del progress[date_str]
         save_region_progress(progress)
 
-def get_current_date():
-    """Читает текущую дату из config.ini, исправлена проблема с кодировкой."""
+def get_current_date(direction="forward"):
+    """Читает текущую дату из config.ini с правилами для backward."""
     config = configparser.ConfigParser()
-    with CONFIG_PATH.open("r", encoding="utf-8") as file:
-        config.read_file(file)  # Читаем файл с явной кодировкой UTF-8
+    has_date = False
+    saved_date_str = None
 
-    return datetime.strptime(config.get("eis", "date", fallback=START_DATE.strftime("%Y-%m-%d")), "%Y-%m-%d")
+    if CONFIG_PATH.exists():
+        with CONFIG_PATH.open("r", encoding="utf-8") as file:
+            config.read_file(file)
+            if config.has_option("eis", "date"):
+                saved_date_str = config.get("eis", "date")
+                has_date = True
+
+    if has_date and saved_date_str:
+        return datetime.strptime(saved_date_str, "%Y-%m-%d")
+
+    # If no valid checkpoint exists in this config:
+    if direction == "backward":
+        # Check forward cursor from main config.ini
+        main_config_path = Path("/opt/tendermonitor/config.ini")
+        if main_config_path.exists():
+            main_cfg = configparser.ConfigParser()
+            with main_config_path.open("r", encoding="utf-8") as f:
+                main_cfg.read_file(f)
+                if main_cfg.has_option("eis", "date"):
+                    forward_cursor_str = main_cfg.get("eis", "date")
+                    forward_cursor = datetime.strptime(forward_cursor_str, "%Y-%m-%d")
+                    return forward_cursor - timedelta(days=1)
+
+        # If forward cursor can't be read, default to today - 1 as fallback?
+        # The prompt says: "Do NOT initialize from today. Initialize safely below current forward cursor."
+        # If we reach here, we couldn't find forward cursor. We'll use START_DATE as a final fallback.
+        pass
+
+    # Default fallback for forward or if everything else fails
+    return START_DATE
 
 
 def update_config_date(new_date):
@@ -126,29 +155,29 @@ def check_data_available(date_str: str) -> bool:
     """
     Проверяет наличие данных для указанной даты в ЕИС.
     Делает легкий запрос к ЕИС для проверки доступности данных.
-    
+
     :param date_str: Дата в формате YYYY-MM-DD
     :return: True если данные доступны, False если нет
     """
     try:
         from eis_requester import EISRequester
         from database_work.database_requests import get_region_codes
-        
+
         # Создаем EISRequester для проверки
         eis_requester = EISRequester(date=date_str)
-        
+
         # Получаем первый регион для тестового запроса
         regions = get_region_codes()
         if not regions:
             return False
-        
+
         # Делаем тестовый запрос к первому региону и первой подсистеме
         test_region = regions[0]
         test_subsystem = eis_requester.subsystems_44[0] if eis_requester.subsystems_44 else None
-        
+
         if not test_subsystem:
             return False
-        
+
         # Генерируем тестовый SOAP запрос
         if test_subsystem == "PRIZ":
             test_doc_type = eis_requester.documentType44_PRIZ[0] if eis_requester.documentType44_PRIZ else None
@@ -156,20 +185,20 @@ def check_data_available(date_str: str) -> bool:
             test_doc_type = eis_requester.documentType44_RGK[0] if eis_requester.documentType44_RGK else None
         else:
             return False
-        
+
         if not test_doc_type:
             return False
-        
+
         # Отправляем тестовый запрос
         soap_request = eis_requester.generate_soap_request(test_region, test_subsystem, test_doc_type)
         response = eis_requester.send_soap_request(soap_request, test_region, test_doc_type, test_subsystem)
-        
+
         # Если получили ответ и в нем есть данные (не пустой ответ или ошибка)
         if response and len(response) > 100:  # Минимальный размер ответа с данными
             # Проверяем, что это не ошибка
             if "error" not in response.lower() and "exception" not in response.lower():
                 return True
-        
+
         return False
     except Exception as e:
         logger.debug(f"Ошибка при проверке наличия данных для {date_str}: {e}")
@@ -180,12 +209,12 @@ def monitor_for_new_data(target_date: datetime):
     """
     Мониторит появление новых данных для указанной даты.
     Периодически проверяет наличие данных и обрабатывает их при появлении.
-    
+
     :param target_date: Дата для мониторинга
     """
     date_str = target_date.strftime("%Y-%m-%d")
     check_count = 0
-    
+
     print(f"\n{'='*60}")
     print(f"🔍 РЕЖИМ МОНИТОРИНГА: ожидание данных за {date_str}")
     print(f"{'='*60}")
@@ -193,26 +222,26 @@ def monitor_for_new_data(target_date: datetime):
     print(f"ℹ️  Проверка наличия данных каждые {MONITORING_INTERVAL // 60} минут")
     print(f"{'='*60}\n")
     logger.info(f"Включен режим мониторинга для даты {date_str}")
-    
+
     while True:
         try:
             check_count += 1
             current_time = datetime.now()
-            
+
             print(f"\n[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] Проверка #{check_count} наличия данных за {date_str}...")
             logger.info(f"Проверка #{check_count} наличия данных за {date_str}")
-            
+
             # Проверяем наличие данных
             if check_data_available(date_str):
                 print(f"✅ Данные за {date_str} обнаружены! Начинаем обработку...")
                 logger.info(f"Данные за {date_str} обнаружены, начинаем обработку")
-                
+
                 # Обрабатываем дату
                 return True  # Возвращаем True, чтобы обработать дату
             else:
                 print(f"⏳ Данные за {date_str} еще не загружены. Следующая проверка через {MONITORING_INTERVAL // 60} минут...")
                 logger.debug(f"Данные за {date_str} еще не доступны, ожидание...")
-            
+
             # ВРЕМЕННО: отключаем плановую миграцию завершённых контрактов, чтобы не мешать мониторингу.
             # if check_count % 48 == 0:
             #     logger.info("Выполнение плановой миграции завершенных контрактов...")
@@ -220,18 +249,18 @@ def monitor_for_new_data(target_date: datetime):
             #     try:
             #         import threading
             #         migration_result = {"completed": False, "error": None}
-            #         
+            #
             #         def run_migration():
             #             try:
             #                 migrate_completed_contracts()
             #                 migration_result["completed"] = True
             #             except Exception as e:
             #                 migration_result["error"] = e
-            #         
+            #
             #         migration_thread = threading.Thread(target=run_migration, daemon=True)
             #         migration_thread.start()
             #         migration_thread.join(timeout=60)  # Таймаут 60 секунд
-            #         
+            #
             #         if migration_thread.is_alive():
             #             logger.warning("Плановая миграция превысила таймаут 60 секунд")
             #             print("⚠️  Миграция превысила таймаут, продолжаем мониторинг...")
@@ -242,10 +271,10 @@ def monitor_for_new_data(target_date: datetime):
             #     except Exception as e:
             #         logger.error(f"Ошибка при плановой миграции: {e}", exc_info=True)
             #         print(f"⚠️  Ошибка при миграции: {e}")
-            
+
             # Ждем перед следующей проверкой
             time.sleep(MONITORING_INTERVAL)
-            
+
         except KeyboardInterrupt:
             print("\n⚠️  Мониторинг прерван пользователем")
             logger.info("Мониторинг прерван пользователем")
@@ -260,7 +289,7 @@ def monitor_for_new_data(target_date: datetime):
 if __name__ == "__main__":
     try:
         print("🚀 Запуск программы TenderMonitor...")
-        
+
         # Запуск прокси (stunnel на Windows и Linux)
         print("📡 Проверка прокси-соединения...")
         try:
@@ -289,25 +318,25 @@ if __name__ == "__main__":
             print(error_msg)
             print(f"{'='*60}\n")
             sys.exit(1)
-        
+
         # Проверка подключения к БД перед началом работы
         print("🔍 Проверка подключения к БД...")
         try:
             from database_work.database_requests import get_region_codes
-            
+
             # ВРЕМЕННО: только проверяем подключение к БД, без запуска миграций.
             test_regions = get_region_codes()
             print(f"✅ Подключение к БД успешно (найдено регионов: {len(test_regions)})")
         except Exception as db_test_error:
             from utils.exceptions import DatabaseError
             import psycopg2
-            
+
             is_db_error = (
                 isinstance(db_test_error, DatabaseError) or
                 isinstance(db_test_error, psycopg2.Error) or
                 (hasattr(db_test_error, '__cause__') and isinstance(db_test_error.__cause__, (DatabaseError, psycopg2.Error)))
             )
-            
+
             if is_db_error:
                 error_msg = f"❌ ОШИБКА ПОДКЛЮЧЕНИЯ К БД: {db_test_error}"
                 logger.critical(error_msg, exc_info=True)
@@ -323,18 +352,37 @@ if __name__ == "__main__":
                 sys.exit(1)
             else:
                 raise
-        
+
         # Читаем начальную дату из конфигурации (ИСХОДНАЯ дата пользователя)
         initial_date = get_current_date()
         logger.info(
             f"Начальная дата из config.ini: {initial_date.strftime('%Y-%m-%d')}"
         )
 
+        # Optional runtime section (used by backward catchup unit). Forward stays default.
+        _cfg = configparser.ConfigParser()
+        with CONFIG_PATH.open("r", encoding="utf-8") as _cf:
+            _cfg.read_file(_cf)
+        direction = _os_env.getenv(
+            "TENDERMONITOR_DIRECTION",
+            _cfg.get("runtime", "direction", fallback="forward"),
+        ).lower()
+        stop_before_date = None
+        stop_raw = _os_env.getenv(
+            "TENDERMONITOR_STOP_BEFORE",
+            _cfg.get("runtime", "stop_before_date", fallback=""),
+        ).strip()
+        if stop_raw:
+            stop_before_date = datetime.strptime(stop_raw, "%Y-%m-%d")
+        logger.info(f"Режим направления: {direction}")
+
         monitoring_config = MonitoringConfig(
             start_date=initial_date,
             today=datetime.today(),
             monitoring_interval_seconds=MONITORING_INTERVAL,
             eis_data_upload_hour=EIS_DATA_UPLOAD_TIME,
+            direction=direction,
+            stop_before_date=stop_before_date,
         )
 
         def create_eis_requester_for_date(date_str: str) -> EISRequester:
@@ -362,7 +410,7 @@ if __name__ == "__main__":
         )
 
         service.run()
-        
+
     except KeyboardInterrupt:
         print("\n⚠️  Программа прервана пользователем")
         logger.error("Программа прервана пользователем")

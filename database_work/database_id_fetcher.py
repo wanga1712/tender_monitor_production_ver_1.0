@@ -17,16 +17,18 @@ class DatabaseIDFetcher:
         cursor (cursor): Общий курсор для выполнения запросов.
     """
 
-    def __init__(self):
+    def __init__(self, db_manager=None):
         """
         Инициализация объекта DatabaseIDFetcher.
 
-        Создает экземпляр DatabaseManager для выполнения запросов к базе данных.
+        Создает экземпляр DatabaseManager для выполнения запросов к базе данных,
+        либо переиспользует уже открытый менеджер.
         """
 
-        self.db_manager = DatabaseManager()
+        self._owns_manager = db_manager is None
+        self.db_manager = db_manager or DatabaseManager()
         self.cursor = None  # Инициализируем курсор как None
-    
+
     def __del__(self):
         """Деструктор для закрытия соединения при удалении объекта."""
         if hasattr(self, 'cursor') and self.cursor:
@@ -34,7 +36,7 @@ class DatabaseIDFetcher:
                 self.cursor.close()
             except:
                 pass
-        if hasattr(self, 'db_manager') and self.db_manager:
+        if getattr(self, "_owns_manager", False) and hasattr(self, "db_manager") and self.db_manager:
             try:
                 self.db_manager.close()
             except:
@@ -54,7 +56,7 @@ class DatabaseIDFetcher:
         """
         Универсальный метод для получения id записи по заданному значению в указанной таблице.
         Использует кэширование для часто используемых запросов.
-        
+
         Возвращает:
         - int: id записи, если найдена
         - None: если запись не найдена (нормальная ситуация)
@@ -62,12 +64,12 @@ class DatabaseIDFetcher:
         """
         # Создаем ключ для кэша
         cache_key = f"{table_name}:{column_name}:{value}"
-        
+
         # Пытаемся получить из кэша
         if cache.has(cache_key):
             cached_value = cache.get(cache_key)
             return cached_value
-        
+
         query = f"SELECT id FROM {table_name} WHERE {column_name} = %s"
         params = (value,)
 
@@ -179,63 +181,51 @@ class DatabaseIDFetcher:
         """
         return self.fetch_id("okpd_from_users", "code", code)
 
-    def get_reestr_contract_223_fz_id(self, contract_number, return_table=False):
+    def get_reestr_contract_223_fz_id(self, contract_number):
         """
         Получает id записи из таблицы reestr_contract_223_fz по номеру контракта.
-        Проверяет все статусные таблицы: основную, commission_work, unclear, awarded, completed.
 
         :param contract_number: Номер контракта для поиска.
-        :param return_table: Если True, возвращает tuple (id, table_name), иначе только id.
-        :return: id записи или tuple (id, table_name), или None/(None, None), если не найдено.
+        :return: id записи или None, если не найдено.
         """
-        # Список таблиц для проверки (в порядке приоритета)
-        tables = [
-            "reestr_contract_223_fz",
-            "reestr_contract_223_fz_commission_work",
-            "reestr_contract_223_fz_unclear",
-            "reestr_contract_223_fz_awarded",
-            "reestr_contract_223_fz_completed"
-        ]
-        
-        for table in tables:
-            contract_id = self.fetch_id(table, "contract_number", contract_number)
-            if contract_id:
-                if return_table:
-                    return (contract_id, table)
-                return contract_id
-        
-        if return_table:
-            return (None, None)
-        return None
+        return self.fetch_id("reestr_contract_223_fz", "contract_number", contract_number)
 
-    def get_reestr_contract_44_fz_id(self, contract_number, return_table=False):
+    def get_reestr_contract_44_fz_id(self, contract_number):
         """
         Получает id записи из таблицы reestr_contract_44_fz по номеру контракта.
-        Проверяет все статусные таблицы: основную, commission_work, unclear, awarded, completed.
 
         :param contract_number: Номер контракта для поиска.
-        :param return_table: Если True, возвращает tuple (id, table_name), иначе только id.
-        :return: id записи или tuple (id, table_name), или None/(None, None), если не найдено.
+        :return: id записи или None, если не найдено.
         """
-        # Список таблиц для проверки (в порядке приоритета)
-        tables = [
-            "reestr_contract_44_fz",
-            "reestr_contract_44_fz_commission_work",
-            "reestr_contract_44_fz_unclear",
-            "reestr_contract_44_fz_awarded",
-            "reestr_contract_44_fz_completed"
-        ]
-        
-        for table in tables:
-            contract_id = self.fetch_id(table, "contract_number", contract_number)
-            if contract_id:
-                if return_table:
-                    return (contract_id, table)
-                return contract_id
-        
-        if return_table:
+        return self.fetch_id("reestr_contract_44_fz", "contract_number", contract_number)
+
+    def get_reestr_contract_44_fz_commission_work_id(self, contract_number):
+        return self.fetch_id("reestr_contract_44_fz_commission_work", "contract_number", contract_number)
+
+    def get_reestr_contract_223_fz_commission_work_id(self, contract_number):
+        return self.fetch_id("reestr_contract_223_fz_commission_work", "contract_number", contract_number)
+
+    def check_contract_in_any_table(self, contract_number, end_date=None, fz_type=None):
+        """
+        Проверяет наличие контракта в реестре.
+
+        end_date >= сегодня → только main + commission (быстрый путь для PRIZ).
+        Иначе → полный обход (RGK, старые закупки).
+        """
+        from database_work.contract_registry_locator import ContractRegistryLocator
+
+        location = ContractRegistryLocator().find_by_number(
+            contract_number,
+            end_date=end_date,
+            fz_type=fz_type,
+        )
+        if location is None:
             return (None, None)
-        return None
+        return (location.table_name, location.record_id)
+
+    def get_contract_id_from_table(self, table_name, contract_number):
+            """Ищет контракт в конкретной таблице по номеру. Возвращает id или None."""
+            return self.fetch_id(table_name, "contract_number", contract_number)
 
     def get_region_id(self, region_code):
         """
@@ -284,29 +274,27 @@ class DatabaseIDFetcher:
 
     def contract_number_44_fz_id(self, contract_number_44_fz):
         """
-        Получает id записи из таблицы reestr_contract_44_fz по номеру контракта.
-        Проверяет все статусные таблицы.
-        
-        :param contract_number_44_fz: Номер контракта для поиска.
-        :return: id записи или None, если не найдено.
-        """
-        contract_id, _ = self.get_reestr_contract_44_fz_id(contract_number_44_fz)
-        return contract_id
+                Получает id записи из таблицы users по имени пользователя.
+
+                :param username: Имя пользователя для поиска.
+                :return: id записи или None, если не найдено.
+                """
+
+        return self.fetch_id("reestr_contract_44_fz", "contract_number", contract_number_44_fz)
 
     def contract_number_223_fz_id(self, contract_number_223_fz):
         """
-        Получает id записи из таблицы reestr_contract_223_fz по номеру контракта.
-        Проверяет все статусные таблицы.
-        
-        :param contract_number_223_fz: Номер контракта для поиска.
-        :return: id записи или None, если не найдено.
-        """
-        contract_id, _ = self.get_reestr_contract_223_fz_id(contract_number_223_fz)
-        return contract_id
+                Получает id записи из таблицы users по имени пользователя.
+
+                :param username: Имя пользователя для поиска.
+                :return: id записи или None, если не найдено.
+                """
+        return self.fetch_id("reestr_contract_223_fz", "contract_number", contract_number_223_fz)
 
 
     def close(self):
         """
-        Закрывает соединение с базой данных.
+        Закрывает соединение с базой данных, только если этот объект его создал.
         """
-        self.db_manager.close()
+        if getattr(self, "_owns_manager", True):
+            self.db_manager.close()

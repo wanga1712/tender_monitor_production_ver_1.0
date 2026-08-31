@@ -1,43 +1,44 @@
 """
 Настройка логирования для проекта.
-Логи выводятся только в файл, в консоль - только прогресс-бары.
+Логи выводятся в консоль (stdout) и в файлы.
 """
+import os
 import sys
+from pathlib import Path
 from loguru import logger
 
-# Удаляем стандартный обработчик loguru (который выводит в консоль)
 logger.remove()
 
-# Добавляем обработчик для ошибок в файл
+_LOG_DIR = Path(os.getenv("TENDERMONITOR_LOG_DIR", ".")).resolve()
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 logger.add(
-    "errors.log",
+    sys.stdout,
+    level="INFO",
+    colorize=False,
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {message}",
+)
+
+logger.add(
+    str(_LOG_DIR / "errors.log"),
     level="ERROR",
     rotation="1 week",
     compression="zip",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
     backtrace=True,
-    diagnose=True
+    diagnose=True,
 )
 
-# Добавляем обработчик для DEBUG логов (успешные записи в БД)
 logger.add(
-    "debug.log",
+    str(_LOG_DIR / "debug.log"),
     level="DEBUG",
     rotation="1 day",
     compression="zip",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
-    retention="7 days"
+    retention="7 days",
 )
 
-# Для отладки можно временно включить вывод в консоль
-# Раскомментируйте следующие строки, если нужно видеть логи в консоли
-# logger.add(
-#     sys.stderr,
-#     level="INFO",
-#     format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
-# )
 
 def get_logger():
     """Возвращает настроенный logger."""
     return logger
-

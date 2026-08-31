@@ -23,10 +23,12 @@ def get_region_codes():
         # Выполняем запрос к базе данных для получения кодов регионов
         # Используем DISTINCT для получения только уникальных кодов
         query = "SELECT DISTINCT code FROM region ORDER BY code;"
-        db.cursor.execute(query)
 
-        # Получаем все коды регионов и преобразуем их в список
-        codes = [row[0] for row in db.cursor.fetchall()]
+        # Используем контекстный менеджер get_cursor
+        with db.get_cursor() as cursor:
+            cursor.execute(query)
+            # Получаем все коды регионов и преобразуем их в список
+            codes = [row[0] for row in cursor.fetchall()]
 
         return codes
 
@@ -38,10 +40,6 @@ def get_region_codes():
         error_msg = f"Ошибка при получении кодов регионов из БД: {e}"
         logger.error(error_msg, exc_info=True)
         raise DatabaseError(error_msg, original_error=e) from e
-
     finally:
-        # Закрываем курсор и соединение с базой данных
-        if db.cursor:
-            db.cursor.close()
-        if db.connection:
-            db.connection.close()
+        # DatabaseManager закрывается (соединения) в методе close
+        db.close()

@@ -1,48 +1,21 @@
 import os
 import uuid
-import json
-import time
-from pathlib import Path
-
 import requests
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
+from eis_download_fix import rewrite_eis_url_via_stunnel
 from typing import Optional
 
 from utils.logger_config import get_logger
 from utils.progress import ProgressManager
 from secondary_functions import load_config, load_token
+import time
+
 from archive_extractor import ArchiveExtractor
 from parsing_xml.okpd_parser import process_okpd_files  # Импортируем функцию для проверки ОКПД
 from file_delete.file_deleter import FileDeleter  # Импортируем класс FileDeleter
 
 # Получаем logger (только ошибки в файл)
 logger = get_logger()
-
-# Путь для отладочных логов (NDJSON) – используется в debug mode
-DEBUG_LOG_PATH = Path(__file__).resolve().parent / ".cursor" / "debug.log"
-
-
-def debug_log(hypothesis_id: str, location: str, message: str, data: Optional[dict] = None) -> None:
-    """
-    Пишет отладочное сообщение в NDJSON-файл.
-    Используется только для диагностики (не влияет на основную логику).
-    """
-    try:
-        DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        entry = {
-            "sessionId": "debug-session",
-            "runId": "network-debug",
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data or {},
-            "timestamp": int(time.time() * 1000),
-        }
-        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception:
-        # Никогда не ломаем основную логику из-за проблем с отладочными логами
-        pass
 
 
 class FileDownloader:
@@ -67,28 +40,6 @@ class FileDownloader:
         # Создаем объект для разархивации
         self.archive_extractor = ArchiveExtractor(config_path)
 
-        # Базовый URL прокси (stunnel/nginx), через который должны идти ВСЕ запросы к ЕИС
-        # Для SOAP это уже http://localhost:8080/eis-integration/..., здесь используем тот же хост/порт.
-        self.proxy_scheme = "http"
-        self.proxy_netloc = "localhost:8080"
-
-    def _build_proxy_url(self, original_url: str) -> str:
-        """
-        Преобразует исходный URL ЕИС (https://int.zakupki.gov.ru/... или https://int44.zakupki.gov.ru/...)
-        в URL, проходящий через локальный прокси (http://localhost:8080/...).
-
-        Путь и query сохраняются как есть, меняются только схема и host:port.
-        НЕ меняем host (int.zakupki.gov.ru vs int44.zakupki.gov.ru) - используем тот, что пришёл от ЕИС.
-        """
-        parsed = urlparse(original_url)
-        # Оставляем path и query нетронутыми, чтобы не поломать ticket/docRequestUid
-        # Меняем только scheme и netloc на прокси
-        proxied = parsed._replace(
-            scheme=self.proxy_scheme,
-            netloc=self.proxy_netloc,
-        )
-        return urlunparse(proxied)
-
     def download_files(self, urls, subsystem, region_code, progress_manager: Optional[ProgressManager] = None):
         """
         Скачивает файлы по переданному списку URL и сохраняет их в нужную папку в зависимости от типа документа.
@@ -100,30 +51,33 @@ class FileDownloader:
         :raises: Записывает ошибки в лог при проблемах с скачиванием.
         """
         path_mapping = {
-            "PRIZ": "reest_new_contract_archive_44_fz_xml",
-            "RGK": "recouped_contract_archive_44_fz_xml",
-            "RI223": "reest_new_contract_archive_223_fz_xml",
-            "RD223": "recouped_contract_archive_223_fz_xml",
+            "PRIZ": ("path", "reest_new_contract_archive_44_fz_xml"),
+            "RGK": ("path", "recouped_contract_archive_44_fz_xml"),
+            "RI223": ("path", "reest_new_contract_archive_223_fz_xml"),
+            "RD223": ("path", "recouped_contract_archive_223_fz_xml"),
+            # 615_RD — legacy-ключ; 615_RD615 — после фикса subsystem=RD615
+            "615_RD": ("eis_615", "archive_xml"),
+            "615_RD615": ("eis_615", "archive_xml"),
+            "615_PPRF615": ("eis_615", "archive_xml"),
         }
 
         # Определяем тип ФЗ для описания
-        fz_type = "44-ФЗ" if subsystem in ["PRIZ", "RGK"] else "223-ФЗ"
-        # Имена задач для прогресс-баров (44-ФЗ -> download_44, 223-ФЗ -> download_223)
-        if fz_type == "44-ФЗ":
-            download_task_name = "download_44"
-            process_task_name = "process_44"
+        if subsystem in ["PRIZ", "RGK"]:
+            fz_type = "44-ФЗ"
+        elif subsystem in ("615_RD", "615_RD615", "615_PPRF615") or str(subsystem).startswith("615_"):
+            fz_type = "615-ПП"
         else:
-            download_task_name = "download_223"
-            process_task_name = "process_223"
+            fz_type = "223-ФЗ"
 
         # Проверяем, есть ли subsystem в словаре
-        path_key = path_mapping.get(subsystem)
-        if not path_key:
+        mapping = path_mapping.get(subsystem)
+        if not mapping:
             logger.error(f"Не найден путь для типа документа: {subsystem}")
             return None
 
+        section, path_key = mapping
         # Получаем путь из config.ini
-        save_path = self.config.get("path", path_key, fallback=None)
+        save_path = self.config.get(section, path_key, fallback=None)
         if not save_path:
             logger.error(f"Путь не найден в конфигурации для {path_key}")
             return None
@@ -131,74 +85,33 @@ class FileDownloader:
         # Создаём FileDeleter с уже известным save_path
         file_deleter = FileDeleter(save_path)
 
-        urls_count = len(urls)
-
         if not urls:
-            debug_log(
-                "FD1",
-                "file_downloader.py:download_files",
-                "Пустой список URL, скачивание пропущено",
-                {
-                    "subsystem": subsystem,
-                    "region_code": region_code,
-                    "fz_type": fz_type,
-                },
-            )
             return save_path
 
         # Обновляем единый прогресс-бар скачивания
         if progress_manager:
             progress_manager.update_task("download_all", advance=0)
             progress_manager.set_description("download_all", f"⬇️ Скачивание архивов | Регион {region_code} | {subsystem} | {fz_type}")
-        logger.info(f"Начало скачивания {urls_count} архивов ({fz_type}, регион {region_code})")
-        debug_log(
-            "FD2",
-            "file_downloader.py:download_files",
-            "Начало скачивания архивов",
-            {
-                "urls_count": urls_count,
-                "subsystem": subsystem,
-                "region_code": region_code,
-                "fz_type": fz_type,
-            },
-        )
+
+        logger.info(f"Начало скачивания {len(urls)} архивов ({fz_type}, регион {region_code})")
 
         # Перебираем все URL в списке - скачиваем файлы
         downloaded_count = 0
-        success_count = 0
-        fail_count = 0
-        start_time = time.time()
-
-        for idx, url in enumerate(urls, start=1):
+        for url in urls:
             try:
-                # Строим URL через локальный прокси/stunnel (localhost:8080)
-                proxy_url = self._build_proxy_url(url)
-
-                # Разбираем ИСХОДНЫЙ URL для получения имени файла (чтобы имя было предсказуемым)
+                # Разбираем URL для получения имени файла
                 parsed_url = urlparse(url)
                 filename = os.path.basename(parsed_url.path) or f"file_{uuid.uuid4().hex[:8]}.zip"
+                if not filename.lower().endswith(".zip"):
+                    filename = f"{filename}_{uuid.uuid4().hex[:8]}.zip"
                 file_path = os.path.join(save_path, filename)
 
                 # Устанавливаем заголовки для запроса
                 headers = {'individualPerson_token': self.token}
 
-                debug_log(
-                    "FD3",
-                    "file_downloader.py:download_files",
-                    "Запрос архива",
-                    {
-                        "index": idx,
-                        "urls_count": urls_count,
-                        "url": url,
-                        "proxy_url": proxy_url,
-                        "region_code": region_code,
-                        "subsystem": subsystem,
-                        "fz_type": fz_type,
-                    },
-                )
-
-                # Отправляем GET-запрос для скачивания файла через локальный прокси/stunnel
-                response = requests.get(proxy_url, stream=True, headers=headers, timeout=120)
+                # Отправляем GET-запрос для скачивания файла
+                download_url = rewrite_eis_url_via_stunnel(url)
+                response = requests.get(download_url, stream=True, headers=headers, timeout=120, verify=False)
                 response.raise_for_status()  # Проверка на успешность запроса
 
                 # Записываем скачанный файл на диск
@@ -210,116 +123,28 @@ class FileDownloader:
                 # После скачивания сразу разархивируем файл
                 self.archive_extractor.unzip_files(save_path)
 
-                # ВРЕМЕННО: архив НЕ удаляем, чтобы можно было анализировать его содержимое на сервере
-                # file_deleter.delete_single_file(file_path)
+                # Удаляем архив после распаковки
+                file_deleter.delete_single_file(file_path)
 
                 downloaded_count += 1
-                success_count += 1
-
-                debug_log(
-                    "FD4",
-                    "file_downloader.py:download_files",
-                    "Архив успешно скачан и распакован",
-                    {
-                        "index": idx,
-                        "urls_count": urls_count,
-                        "url": url,
-                        "region_code": region_code,
-                        "subsystem": subsystem,
-                        "fz_type": fz_type,
-                        "status_code": response.status_code,
-                    },
-                )
                 # Обновляем единый прогресс-бар скачивания
                 if progress_manager:
                     progress_manager.update_task("download_all", advance=1)
                     progress_manager.set_description("download_all", f"⬇️ Скачивание архивов | Регион {region_code} | {subsystem} | {downloaded_count}/{len(urls)}")
-                
+
                 logger.info(f"Скачан и распакован архив {downloaded_count}/{len(urls)} ({fz_type}, регион {region_code})")
 
             except requests.exceptions.RequestException as e:
-                fail_count += 1
                 logger.error(f"Ошибка при скачивании {url}: {e}")
-                debug_log(
-                    "FD5",
-                    "file_downloader.py:download_files",
-                    "Ошибка HTTP при скачивании архива",
-                    {
-                        "index": idx,
-                        "urls_count": urls_count,
-                        "url": url,
-                        "proxy_url": proxy_url,
-                        "region_code": region_code,
-                        "subsystem": subsystem,
-                        "fz_type": fz_type,
-                        "error": str(e),
-                    },
-                )
             except Exception as e:
-                fail_count += 1
                 logger.error(f"Неожиданная ошибка при скачивании файла {url}: {e}", exc_info=True)
-                debug_log(
-                    "FD6",
-                    "file_downloader.py:download_files",
-                    "Неожиданная ошибка при скачивании архива",
-                    {
-                        "index": idx,
-                        "urls_count": urls_count,
-                        "url": url,
-                        "region_code": region_code,
-                        "subsystem": subsystem,
-                        "fz_type": fz_type,
-                        "error": str(e),
-                    },
-                )
 
-        elapsed = time.time() - start_time
-        logger.info(f"Скачивание завершено: {downloaded_count}/{urls_count} архивов ({fz_type}, регион {region_code})")
-        debug_log(
-            "FD7",
-            "file_downloader.py:download_files",
-            "Скачивание завершено",
-            {
-                "urls_count": urls_count,
-                "downloaded_count": downloaded_count,
-                "success_count": success_count,
-                "fail_count": fail_count,
-                "region_code": region_code,
-                "subsystem": subsystem,
-                "fz_type": fz_type,
-                "duration_seconds": round(elapsed, 2),
-            },
-        )
+        logger.info(f"Скачивание завершено: {downloaded_count}/{len(urls)} архивов ({fz_type}, регион {region_code})")
 
-        # Если были ошибки скачивания, считаем, что дата/регион нельзя считать успешно обработанными
-        # и НЕ имеем права "тихо" идти дальше.
-        if fail_count > 0:
-            error_message = (
-                f"Не удалось скачать {fail_count} из {urls_count} архивов "
-                f"({fz_type}, регион {region_code}, подсистема {subsystem})"
-            )
-            logger.error(error_message)
-            debug_log(
-                "FD8",
-                "file_downloader.py:download_files",
-                "Критическая ошибка скачивания архивов",
-                {
-                    "urls_count": urls_count,
-                    "downloaded_count": downloaded_count,
-                    "success_count": success_count,
-                    "fail_count": fail_count,
-                    "region_code": region_code,
-                    "subsystem": subsystem,
-                    "fz_type": fz_type,
-                },
-            )
-            # Бросаем исключение, чтобы верхний уровень НЕ продолжал обработку как будто всё ок
-            raise RuntimeError(error_message)
-        
         # Обновляем описание задачи обработки
         if progress_manager:
             progress_manager.set_description("process_all", f"⚙️ Обработка файлов | Регион {region_code} | {subsystem} | {fz_type}")
-        
+
         # После скачивания всех файлов обрабатываем данные
         logger.info(f"Начало обработки файлов ({fz_type}, регион {region_code})")
         process_okpd_files(save_path, region_code, progress_manager)
@@ -327,7 +152,7 @@ class FileDownloader:
 
         # Возвращаем путь, в который были сохранены архивы
         return save_path
-    
+
     def download_files_only(self, urls, subsystem, region_code, progress_manager: Optional[ProgressManager] = None):
         """
         ТОЛЬКО скачивает и распаковывает файлы (без обработки).
@@ -363,15 +188,15 @@ class FileDownloader:
         downloaded_count = 0
         for url in urls:
             try:
-                # Строим URL через локальный прокси/stunnel (localhost:8080)
-                proxy_url = self._build_proxy_url(url)
-
                 parsed_url = urlparse(url)
                 filename = os.path.basename(parsed_url.path) or f"file_{uuid.uuid4().hex[:8]}.zip"
+                if not filename.lower().endswith(".zip"):
+                    filename = f"{filename}_{uuid.uuid4().hex[:8]}.zip"
                 file_path = os.path.join(save_path, filename)
 
                 headers = {'individualPerson_token': self.token}
-                response = requests.get(proxy_url, stream=True, headers=headers, timeout=120)
+                download_url = rewrite_eis_url_via_stunnel(url)
+                response = requests.get(download_url, stream=True, headers=headers, timeout=120, verify=False)
                 response.raise_for_status()
 
                 with open(file_path, "wb") as file:
@@ -381,8 +206,8 @@ class FileDownloader:
 
                 # Распаковываем архив
                 self.archive_extractor.unzip_files(save_path)
-                # ВРЕМЕННО: архив НЕ удаляем, чтобы можно было анализировать его содержимое на сервере
-                # file_deleter.delete_single_file(file_path)
+                # Удаляем архив
+                file_deleter.delete_single_file(file_path)
 
                 downloaded_count += 1
                 if progress_manager:
@@ -395,7 +220,7 @@ class FileDownloader:
                 logger.error(f"Ошибка при скачивании {url}: {e}")
             except Exception as e:
                 logger.error(f"Неожиданная ошибка при скачивании файла {url}: {e}", exc_info=True)
-        
+
         logger.info(f"Скачивание завершено: {downloaded_count}/{len(urls)} архивов ({fz_type}, регион {region_code})")
-        
+
         return {"path": save_path, "count": downloaded_count, "subsystem": subsystem, "region_code": region_code, "fz_type": fz_type}

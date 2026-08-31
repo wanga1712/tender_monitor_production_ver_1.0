@@ -3,7 +3,11 @@
     "contract_number": "order/notificationNumber",
     "delivery_start_date": "executionPeriod/startDate",
     "delivery_end_date": "executionPeriod/endDate",
-    "final_price": "priceInfo/price"
+    "final_price": "priceInfo/price",
+    "auction_name": "contractSubject",
+    "okpd_code": "OKPD2/code",
+    "notification_number": "notificationNumber",
+    "reestr_number": "reestrNumber"
   },
   "contractor": {
     "short_name": "legalEntityRF/EGRULInfo/shortName",
