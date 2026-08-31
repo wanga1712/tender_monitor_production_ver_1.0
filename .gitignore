@@ -108,3 +108,30 @@ test.py
 # Uncomment if test files should be ignored
 # test*.py
 
+# Server runtime state and generated metrics
+region_progress.json
+backward/region_progress.json
+pending_dates.json
+source_day_metrics.jsonl
+backward/data/
+failed_uploads/
+garbage/
+
+# Local caches, operational backups, and generated archives
+.cache/
+backups/
+bak-*/
+document_processor_backup_/
+*.bak*
+*.tgz
+debug.log*
+errors.log*
+keywords_debug.txt
+all_products_dump.txt
+
+# Secret-bearing local copies and private certificates
+.env.*
+*.pfx
+
+# Accidental Windows-path copies created as top-level entries on Linux
+C:*
