@@ -105,3 +105,35 @@ def test_awarded_223_update_cannot_overwrite_submission_dates():
         "2026-12-20",
         "223TEST",
     )
+
+
+def test_ri223_reingestion_repairs_corrupted_submission_dates():
+    connection = _FakeConnection()
+    operations = DatabaseOperations.__new__(DatabaseOperations)
+    operations.db_manager = type("FakeManager", (), {"connection": connection})()
+
+    result = operations._update_existing_contract_223(
+        77,
+        {
+            "contract_number": "223TEST",
+            "start_date": "2026-08-30",
+            "end_date": "2026-09-05",
+            "delivery_start_date": None,
+            "delivery_end_date": None,
+        },
+    )
+
+    assert result is True
+    assert connection.commits == 1
+    assert len(connection.recording_cursor.calls) == 1
+    query, values = connection.recording_cursor.calls[0]
+    assert "start_date = %s" in query
+    assert "end_date = %s" in query
+    assert "delivery_start_date = %s" not in query
+    assert "delivery_end_date = %s" not in query
+    assert values == (
+        "223TEST",
+        "2026-08-30",
+        "2026-09-05",
+        77,
+    )
