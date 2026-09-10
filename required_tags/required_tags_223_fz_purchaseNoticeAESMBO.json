@@ -1,0 +1,43 @@
+{
+  "reestr_contract": {
+    "contract_number": "body/item/purchaseNoticeAESMBOData/registrationNumber",
+    "tender_link": "body/item/purchaseNoticeAESMBOData/urlEIS",
+    "auction_name": "body/item/purchaseNoticeAESMBOData/name",
+    "start_date": "body/item/purchaseNoticeAESMBOData/publicationDateTime",
+    "end_date": "body/item/purchaseNoticeAESMBOData/submissionCloseDateTime",
+    "initial_price": "body/item/purchaseNoticeAESMBOData/lots/lot/lotData/initialSum",
+    "placer": "body/item/purchaseNoticeAESMBOData/placer/mainInfo/fullName",
+    "placer_inn": "body/item/purchaseNoticeAESMBOData/placer/mainInfo/inn",
+    "delivery_region": "body/item/purchaseNoticeAESMBOData/lots/lot/lotData/deliveryPlace/region",
+    "delivery_address": "body/item/purchaseNoticeAESMBOData/lots/lot/lotData/deliveryPlace/address"
+  },
+  "trading_platform": {
+    "trading_platform_name": "body/item/purchaseNoticeAESMBOData/electronicPlaceInfo/name",
+    "trading_platform_url": "body/item/purchaseNoticeAESMBOData/urlVSRZ"
+  },
+  "customer": {
+    "customer_short_name": "body/item/purchaseNoticeAESMBOData/customer/mainInfo/shortName",
+    "customer_full_name": "body/item/purchaseNoticeAESMBOData/customer/mainInfo/fullName",
+    "customer_inn": "body/item/purchaseNoticeAESMBOData/customer/mainInfo/inn",
+    "customer_kpp": "body/item/purchaseNoticeAESMBOData/customer/mainInfo/kpp",
+    "customer_legal_address": "body/item/purchaseNoticeAESMBOData/customer/mainInfo/legalAddress",
+    "customer_actual_address": "body/item/purchaseNoticeAESMBOData/customer/mainInfo/postalAddress",
+    "contact_last_name": "body/item/purchaseNoticeAESMBOData/customer/contact/lastName",
+    "contact_first_name": "body/item/purchaseNoticeAESMBOData/customer/contact/firstName",
+    "contact_middle_name": "body/item/purchaseNoticeAESMBOData/customer/contact/middleName",
+    "contact_email": "body/item/purchaseNoticeAESMBOData/customer/contact/email",
+    "contact_phone": "body/item/purchaseNoticeAESMBOData/customer/contact/phone"
+  },
+  "links_documentation": {
+    "printFormInfo": {
+      "xpath": ".//printFormInfo/url",
+      "default_file_name": "Извещение о проведении закупки",
+      "first_only": true
+    },
+    "attachmentInfo": {
+      "xpath": ".//document",
+      "file_name": "fileName",
+      "document_links": "url"
+    }
+  }
+}

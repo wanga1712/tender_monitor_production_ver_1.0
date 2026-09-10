@@ -1,0 +1,44 @@
+{
+  "reestr_contract": {
+    "contract_number": "commonInfo/purchaseNumber",
+    "tender_link": "commonInfo/href",
+    "auction_name": "commonInfo/purchaseObjectInfo",
+    "start_date": "commonInfo/plannedPublishDate",
+    "end_date": "collectingInfo/endDT",
+    "initial_price": "notificationInfo/contractConditionsInfo/maxPriceInfo/maxPrice",
+    "customer": "purchaseResponsibleInfo/responsibleOrgInfo/fullName",
+    "guarantee_amount": "applicationGuarantee/amount",
+    "delivery_region": "GARInfo/GARAddress",
+    "delivery_address": "GARInfo/deliveryPlace"
+  },
+  "trading_platform": {
+    "trading_platform_name": "ETP/name",
+    "trading_platform_url": "ETP/url"
+  },
+  "customer": {
+    "customer_short_name": "purchaseResponsibleInfo/responsibleOrgInfo/shortName",
+    "customer_full_name": "purchaseResponsibleInfo/responsibleOrgInfo/fullName",
+    "customer_inn": "purchaseResponsibleInfo/responsibleOrgInfo/INN",
+    "customer_kpp": "purchaseResponsibleInfo/responsibleOrgInfo/KPP",
+    "customer_legal_address": "purchaseResponsibleInfo/responsibleOrgInfo/postAddress",
+    "customer_actual_address": "purchaseResponsibleInfo/responsibleOrgInfo/factAddress",
+    "contact_last_name": "contactPersonInfo/lastName",
+    "contact_first_name": "contactPersonInfo/firstName",
+    "contact_middle_name": "contactPersonInfo/middleName",
+    "contact_email": "purchaseResponsibleInfo/contactEMail",
+    "contact_phone": "purchaseResponsibleInfo/responsibleInfo/contactPhone"
+  },
+  "links_documentation": {
+    "printFormInfo": {
+      "xpath": ".//printFormInfo",
+      "document_links": "url",
+      "default_file_name": "Извещение о проведении электронного аукциона",
+      "first_only": true
+    },
+    "attachmentInfo": {
+      "xpath": ".//attachmentInfo",
+      "file_name": "fileName",
+      "document_links": "url"
+    }
+  }
+}

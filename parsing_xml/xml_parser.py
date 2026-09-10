@@ -2,6 +2,7 @@ import json
 import xml.etree.ElementTree as ET
 import re
 from datetime import datetime
+from pathlib import Path
 
 from utils.logger_config import get_logger
 from secondary_functions import load_config
@@ -63,6 +64,55 @@ class XMLParser:
         except Exception as e:
             logger.error(f"Ошибка при загрузке JSON файла с тегами {tags_path}: {e}")
             return None
+
+    @staticmethod
+    def _local_name(tag):
+        return tag.rsplit("}", 1)[-1].split(":")[-1]
+
+    @classmethod
+    def _detect_document_type(cls, root):
+        supported = {"epNotificationEOK2020", "purchaseNoticeAE", "purchaseNoticeAESMBO"}
+        for element in root.iter():
+            document_type = cls._local_name(element.tag)
+            if document_type in supported:
+                return document_type
+        return None
+
+    @staticmethod
+    def _tags_law_family(tags_file):
+        name = Path(tags_file).name.lower()
+        if name.startswith("required_tags_44_fz"):
+            return "44_FZ"
+        if name.startswith("required_tags_223_fz"):
+            return "223_FZ"
+        if name.startswith("required_tags_615_pp"):
+            return "615_PP"
+        return None
+
+    def _select_schema_mapping(self, tags_file, root):
+        law_family = self._tags_law_family(tags_file)
+        document_type = self._detect_document_type(root)
+        registry_path = Path(tags_file).with_name("schema_mapping_registry.json")
+        profile_name = None
+        if registry_path.is_file():
+            try:
+                registry = json.loads(registry_path.read_text(encoding="utf-8"))
+                profile_name = next(
+                    (
+                        item.get("profile")
+                        for item in registry.get("profiles", [])
+                        if item.get("law_family") == law_family
+                        and item.get("document_type") == document_type
+                        and item.get("profile")
+                    ),
+                    None,
+                )
+            except (OSError, json.JSONDecodeError):
+                logger.warning("Не удалось загрузить schema mapping registry: %s", registry_path)
+        if not profile_name:
+            return tags_file
+        profile_path = Path(tags_file).with_name(profile_name)
+        return str(profile_path) if profile_path.is_file() else tags_file
 
     def _extract_contract_number_for_links(self, root, contract_tags):
         """????????? ????? ????????? ??? ?????????? ???????? ??????."""
@@ -302,8 +352,7 @@ class XMLParser:
 
         # Парсинг общих данных
         for tag, xpath in tags.items():
-            tag_without_namespace = xpath.split(":")[-1]
-            elements = root.findall(f".//{tag_without_namespace}")
+            elements = root.findall(f".//{xpath}")
 
             if elements:
                 values = [elem.text.strip() for elem in elements if elem.text and elem.text.strip()]
@@ -426,9 +475,9 @@ class XMLParser:
             if entry:
                 if table_override == 'links_documentation_615_pp':
                     self.database_operations._insert_data('links_documentation_615_pp', entry)
-                elif tags_file == self.tags_paths['get_tags_44_new']:
+                elif self._tags_law_family(tags_file) == '44_FZ':
                     inserted_id = self.database_operations.insert_link_documentation_44_fz(entry)
-                elif tags_file == self.tags_paths['get_tags_223_new']:
+                elif self._tags_law_family(tags_file) == '223_FZ':
                     inserted_id = self.database_operations.insert_link_documentation_223_fz(entry)
                 else:
                     logger.error(f"Неизвестный файл тегов: {tags_file}")
@@ -452,11 +501,11 @@ class XMLParser:
                 continue
 
             try:
-                if tags_file == self.tags_paths['get_tags_44_new']:
+                if self._tags_law_family(tags_file) == '44_FZ':
                     found_tags[tag] = element.text.strip() if element.text else None
-                elif tags_file == self.tags_paths.get('get_tags_615_new'):
+                elif self._tags_law_family(tags_file) == '615_PP':
                     found_tags[tag] = element.text.strip() if element.text else None
-                elif tags_file == self.tags_paths['get_tags_223_new']:
+                elif self._tags_law_family(tags_file) == '223_FZ':
                     found_tags[tag] = element.text
                 else:
                     logger.error(f"Неизвестный файл тегов: {tags_file}")
@@ -530,6 +579,15 @@ class XMLParser:
             logger.error(f"Ошибка при парсинге XML-файла {file_path}: {e}")
             return
 
+        # Select an exact schema profile; unknown document types keep legacy behavior.
+        selected_tags_file = self._select_schema_mapping(tags_file, root)
+        if selected_tags_file != tags_file:
+            tags_file = selected_tags_file
+            tags = self.load_json_tags(tags_file)
+            if not tags:
+                logger.error("Не удалось загрузить schema-specific JSON тегов.")
+                return
+
         # Получаем данные о заказчике
         customer_id = self.parse_customer(
             root,
@@ -551,7 +609,7 @@ class XMLParser:
                 work_kind_tags=tags.get('work_kind', {}),
                 contractor_tags=tags.get('contractor', {}),
             )
-        elif tags_file == self.tags_paths['get_tags_44_new']:
+        elif self._tags_law_family(tags_file) == '44_FZ':
             contract_id = self.parse_reestr_contract_44_fz(
                 root,
                 tags.get('reestr_contract', {}),
@@ -563,7 +621,7 @@ class XMLParser:
                 file_path,
                 xml_folder_path
             )
-        elif tags_file == self.tags_paths['get_tags_223_new']:
+        elif self._tags_law_family(tags_file) == '223_FZ':
             contract_id = self.parse_reestr_contract_223_fz(
                 root,
                 tags.get('reestr_contract', {}),

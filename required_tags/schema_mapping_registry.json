@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "law_family": "44_FZ",
+      "document_type": "epNotificationEOK2020",
+      "namespace": "http://zakupki.gov.ru/oos/export/1",
+      "profile": "required_tags_44_fz_epNotificationEOK2020.json",
+      "fields": {
+        "contract_number": {"source_xml_path": "commonInfo/purchaseNumber", "cardinality": "1"},
+        "start_date": {"source_xml_path": "commonInfo/plannedPublishDate", "business_semantics": "publication_date", "cardinality": "1"},
+        "initial_price": {"source_xml_path": "notificationInfo/contractConditionsInfo/maxPriceInfo/maxPrice", "cardinality": "1"},
+        "okpd": {"source_xml_path": ["notificationInfo/purchaseObjectsInfo/notDrugPurchaseObjectsInfo/purchaseObject/OKPD2/OKPDCode", "notificationInfo/purchaseObjectsInfo/notDrugPurchaseObjectsInfo/purchaseObject/KTRU/OKPD2/OKPDCode", "notificationInfo/customerRequirementsInfo/customerRequirementInfo/contractConditionsInfo/IKZInfo/OKPD2Info/OKPD2/OKPDCode"], "cardinality": "many"}
+      }
+    },
+    {
+      "law_family": "223_FZ",
+      "document_type": "purchaseNoticeAESMBO",
+      "namespace": "http://zakupki.gov.ru/223fz/purchase/1",
+      "profile": "required_tags_223_fz_purchaseNoticeAESMBO.json",
+      "fields": {
+        "contract_number": {"source_xml_path": "body/item/purchaseNoticeAESMBOData/registrationNumber", "cardinality": "1"},
+        "start_date": {"source_xml_path": "body/item/purchaseNoticeAESMBOData/publicationDateTime", "business_semantics": "publication_date", "cardinality": "1"},
+        "submission_start": {"source_xml_path": "body/item/purchaseNoticeAESMBOData/applSubmisionStartDate", "business_semantics": "submission_start", "cardinality": "1", "storage": "raw_only"},
+        "end_date": {"source_xml_path": "body/item/purchaseNoticeAESMBOData/submissionCloseDateTime", "business_semantics": "submission_deadline", "cardinality": "1"},
+        "initial_price": {"source_xml_path": "body/item/purchaseNoticeAESMBOData/lots/lot/lotData/initialSum", "cardinality": "many"},
+        "okpd": {"source_xml_path": "body/item/purchaseNoticeAESMBOData/lots/lot/lotData/lotItems/lotItem/okpd2/code", "cardinality": "many"},
+        "version": {"source_xml_path": "body/item/purchaseNoticeAESMBOData/version", "cardinality": "1"}
+      },
+      "excluded_paths": [
+        "body/item/purchaseNoticeAESMBOData/documentationDelivery/deliveryStartDateTime",
+        "body/item/purchaseNoticeAESMBOData/documentationDelivery/deliveryEndDateTime"
+      ]
+    }
+  ]
+}

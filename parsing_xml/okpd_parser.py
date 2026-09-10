@@ -456,9 +456,14 @@ def process_okpd_file(
         xml_content = XMLParser.remove_namespaces(xml_content)
         root = ET.fromstring(xml_content)
 
-        okpd_code = extract_okpd_code(root)
+        okpd_codes = extract_okpd_codes(root)
+        parser = xml_parser or XMLParser(config_path=os.getenv("TENDERMONITOR_CONFIG", "config.ini"))
+        okpd_code = next(
+            (candidate for candidate in okpd_codes if parser.db_id_fetcher.get_okpd_id(candidate)),
+            None,
+        )
         if okpd_code:
-            # Проверяем ОКПД код в БД и обрабатываем
+            # Use the first source-order code that is present in canonical OKPD data.
             try:
                 debug_log(
                     "OK7",
@@ -471,7 +476,7 @@ def process_okpd_file(
                     file_path,
                     region_code,
                     folder_path,
-                    xml_parser=xml_parser,
+                    xml_parser=parser,
                 )
                 debug_log(
                     "OK8",
@@ -493,7 +498,7 @@ def process_okpd_file(
                 stats_collector.increment("files_skipped_no_okpd", 1)
             except Exception:
                 pass
-            logger.warning(f"Не найден код ОКПД в файле {file_name}, файл удалён")
+            logger.warning(f"Не найден canonical ОКПД код в файле {file_name}, файл удалён")
             debug_log(
                 "OK9",
                 "okpd_parser.py:process_okpd_file",
@@ -516,16 +521,25 @@ def process_okpd_file(
         return "error"
 
 
+def extract_okpd_codes(root):
+    """Return unique source OKPD codes in deterministic document order."""
+    values = []
+    seen = set()
+    for parent in root.iter():
+        parent_name = parent.tag.rsplit("}", 1)[-1].split(":")[-1]
+        for child in parent:
+            child_name = child.tag.rsplit("}", 1)[-1].split(":")[-1]
+            if child_name == "OKPDCode" or (parent_name.lower() == "okpd2" and child_name.lower() == "code"):
+                value = (child.text or "").strip()
+                if value and value not in seen:
+                    seen.add(value)
+                    values.append(value)
+    return values
+
+
 def extract_okpd_code(root):
-    okpd_code_element = root.find(".//OKPDCode")
-    if okpd_code_element is not None:
-        return okpd_code_element.text
-
-    okpd2_code_element = root.find(".//okpd2/code")
-    if okpd2_code_element is not None:
-        return okpd2_code_element.text
-
-    return None
+    """Backward-compatible first source code helper."""
+    return next(iter(extract_okpd_codes(root)), None)
 
 
 def process_okpd_code(okpd_code, file_path, region_code, folder_path, xml_parser=None):
