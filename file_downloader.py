@@ -1,5 +1,6 @@
 import os
 import shutil
+import zipfile
 import uuid
 import requests
 from datetime import date
@@ -54,6 +55,11 @@ class FileDownloader:
         shutil.copy2(str(file_path), str(raw_path))
         persist_archive(raw_path, law_family, self.ingestion_direction, self.source_date, [], subsystem)
         return raw_path
+
+    @staticmethod
+    def _archive_xml_members(file_path):
+        with zipfile.ZipFile(file_path) as archive:
+            return [name for name in archive.namelist() if name.lower().endswith(".xml")]
 
     def download_files(self, urls, subsystem, region_code, progress_manager: Optional[ProgressManager] = None):
         """
@@ -137,10 +143,11 @@ class FileDownloader:
 
                 # Сохраняем исходный контейнер до extraction и parsing.
                 raw_path = self._retain_archive(file_path, subsystem)
+                archive_xml_members = self._archive_xml_members(file_path)
                 extracted_before = {p.resolve() for p in Path(save_path).rglob("*.xml") if p.is_file()}
                 self.archive_extractor.unzip_files(save_path)
                 extracted_xml = [p for p in Path(save_path).rglob("*.xml") if p.is_file() and p.resolve() not in extracted_before]
-                persist_archive(raw_path, "44_FZ" if subsystem in ("PRIZ", "RGK") else "223_FZ", self.ingestion_direction, self.source_date, extracted_xml, subsystem)
+                persist_archive(raw_path, "44_FZ" if subsystem in ("PRIZ", "RGK") else "223_FZ", self.ingestion_direction, self.source_date, archive_xml_members, subsystem)
 
                 # Удаляем архив после распаковки
                 file_deleter.delete_single_file(file_path)
@@ -225,10 +232,11 @@ class FileDownloader:
 
                 # Сохраняем исходный контейнер до extraction и parsing.
                 raw_path = self._retain_archive(file_path, subsystem)
+                archive_xml_members = self._archive_xml_members(file_path)
                 extracted_before = {p.resolve() for p in Path(save_path).rglob("*.xml") if p.is_file()}
                 self.archive_extractor.unzip_files(save_path)
                 extracted_xml = [p for p in Path(save_path).rglob("*.xml") if p.is_file() and p.resolve() not in extracted_before]
-                persist_archive(raw_path, "44_FZ" if subsystem in ("PRIZ", "RGK") else "223_FZ", self.ingestion_direction, self.source_date, extracted_xml, subsystem)
+                persist_archive(raw_path, "44_FZ" if subsystem in ("PRIZ", "RGK") else "223_FZ", self.ingestion_direction, self.source_date, archive_xml_members, subsystem)
                 # Удаляем архив
                 file_deleter.delete_single_file(file_path)
 

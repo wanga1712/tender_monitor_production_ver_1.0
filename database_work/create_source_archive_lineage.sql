@@ -16,14 +16,21 @@ CREATE TABLE IF NOT EXISTS source_archive_manifest (
 CREATE TABLE IF NOT EXISTS source_xml_manifest (
     xml_id BIGSERIAL PRIMARY KEY,
     archive_id BIGINT NOT NULL REFERENCES source_archive_manifest(archive_id) ON DELETE CASCADE,
+    archive_member_path TEXT,
     xml_filename TEXT NOT NULL,
     xml_document_type TEXT,
     schema_version TEXT,
     notice_number TEXT,
     processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     parser_status TEXT NOT NULL DEFAULT 'EXTRACTED',
-    UNIQUE (archive_id, xml_filename)
+    UNIQUE (archive_id, archive_member_path)
 );
+
+ALTER TABLE source_xml_manifest
+    ADD COLUMN IF NOT EXISTS archive_member_path TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_source_xml_manifest_archive_member
+    ON source_xml_manifest (archive_id, archive_member_path)
+    WHERE archive_member_path IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_source_archive_manifest_age
     ON source_archive_manifest (downloaded_at);

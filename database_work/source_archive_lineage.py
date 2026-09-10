@@ -40,13 +40,13 @@ def persist_archive(
     law_family: str,
     ingestion_direction: str,
     source_date: date,
-    xml_paths: Iterable[Path],
+    xml_members: Iterable[str],
     document_type: str | None = None,
 ) -> int:
     """Store one archive and its extracted XML manifest in one transaction."""
     archive_path = Path(archive_path)
     checksum = sha256_file(archive_path)
-    xml_paths = [Path(path) for path in xml_paths]
+    xml_members = list(xml_members)
     with _db_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -72,23 +72,22 @@ def persist_archive(
                 ),
             )
             archive_id = cursor.fetchone()[0]
-            for xml_path in xml_paths:
+            for member_path in xml_members:
+                filename = Path(member_path).name
                 cursor.execute(
                     """
                     INSERT INTO source_xml_manifest
-                        (archive_id, xml_filename, xml_document_type,
+                        (archive_id, archive_member_path, xml_filename, xml_document_type,
                          notice_number, parser_status)
-                    VALUES (%s, %s, %s, %s, 'EXTRACTED')
-                    ON CONFLICT (archive_id, xml_filename) DO UPDATE SET
-                        xml_document_type = EXCLUDED.xml_document_type,
-                        notice_number = EXCLUDED.notice_number,
-                        processed_at = NOW()
+                    VALUES (%s, %s, %s, %s, %s, 'EXTRACTED')
+                    ON CONFLICT DO NOTHING
                     """,
                     (
                         archive_id,
-                        xml_path.name,
+                        member_path,
+                        filename,
                         document_type,
-                        _notice_from_filename(xml_path.name),
+                        _notice_from_filename(filename),
                     ),
                 )
     return archive_id
