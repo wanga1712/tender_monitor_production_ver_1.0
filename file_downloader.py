@@ -1,6 +1,9 @@
 import os
+import shutil
 import uuid
 import requests
+from datetime import date
+from pathlib import Path
 from urllib.parse import urlparse
 from eis_download_fix import rewrite_eis_url_via_stunnel
 from typing import Optional
@@ -13,6 +16,7 @@ import time
 from archive_extractor import ArchiveExtractor
 from parsing_xml.okpd_parser import process_okpd_files  # Импортируем функцию для проверки ОКПД
 from file_delete.file_deleter import FileDeleter  # Импортируем класс FileDeleter
+from database_work.source_archive_lineage import persist_archive
 
 # Получаем logger (только ошибки в файл)
 logger = get_logger()
@@ -39,6 +43,16 @@ class FileDownloader:
 
         # Создаем объект для разархивации
         self.archive_extractor = ArchiveExtractor(config_path)
+        self.ingestion_direction = os.getenv("TENDERMONITOR_DIRECTION", "forward").upper()
+        self.source_date = date.fromisoformat(self.config.get("eis", "date"))
+        self.raw_archive_root = Path(os.getenv("TENDERMONITOR_RAW_ARCHIVE_ROOT", "/opt/tendermonitor/raw_eis_archives"))
+
+    def _retain_archive(self, file_path, subsystem, extracted_xml):
+        law_family = "44_FZ" if subsystem in ("PRIZ", "RGK") else "223_FZ"
+        raw_path = self.raw_archive_root / self.ingestion_direction / law_family / self.source_date.isoformat() / Path(file_path).name
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(file_path), str(raw_path))
+        persist_archive(raw_path, law_family, self.ingestion_direction, self.source_date, extracted_xml, subsystem)
 
     def download_files(self, urls, subsystem, region_code, progress_manager: Optional[ProgressManager] = None):
         """
@@ -121,10 +135,12 @@ class FileDownloader:
                             file.write(chunk)
 
                 # После скачивания сразу разархивируем файл
+                extracted_before = {p.resolve() for p in Path(save_path).rglob("*.xml") if p.is_file()}
                 self.archive_extractor.unzip_files(save_path)
+                extracted_xml = [p for p in Path(save_path).rglob("*.xml") if p.is_file() and p.resolve() not in extracted_before]
 
                 # Удаляем архив после распаковки
-                file_deleter.delete_single_file(file_path)
+                self._retain_archive(file_path, subsystem, extracted_xml)
 
                 downloaded_count += 1
                 # Обновляем единый прогресс-бар скачивания
@@ -205,9 +221,11 @@ class FileDownloader:
                             file.write(chunk)
 
                 # Распаковываем архив
+                extracted_before = {p.resolve() for p in Path(save_path).rglob("*.xml") if p.is_file()}
                 self.archive_extractor.unzip_files(save_path)
+                extracted_xml = [p for p in Path(save_path).rglob("*.xml") if p.is_file() and p.resolve() not in extracted_before]
                 # Удаляем архив
-                file_deleter.delete_single_file(file_path)
+                self._retain_archive(file_path, subsystem, extracted_xml)
 
                 downloaded_count += 1
                 if progress_manager:

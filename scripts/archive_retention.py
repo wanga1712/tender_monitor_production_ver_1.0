@@ -30,6 +30,7 @@ from datetime import datetime, timedelta, timezone
 
 # Configuration
 DOWNLOADS_DIR = "/opt/tendermonitor/downloads"
+RAW_ARCHIVE_DIR = os.getenv("TENDERMONITOR_RAW_ARCHIVE_ROOT", "/opt/tendermonitor/raw_eis_archives")
 PROCESSED_DATES_FILE = "/opt/tendermonitor/processed_dates.json"
 BACKWARD_PROCESSED_DATES_FILE = "/opt/tendermonitor/backward/processed_dates.json"
 BACKWARD_REGION_PROGRESS_FILE = "/opt/tendermonitor/backward/region_progress.json"
@@ -196,6 +197,28 @@ def main():
         else:
             total_freed_bytes += size_bytes
             deleted_count += 1
+
+    raw_deleted = 0
+    raw_skipped = 0
+    if os.path.isdir(RAW_ARCHIVE_DIR):
+        for root, _, filenames in os.walk(RAW_ARCHIVE_DIR):
+            for filename in filenames:
+                path = os.path.join(root, filename)
+                try:
+                    mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
+                    if mtime >= cutoff:
+                        raw_skipped += 1
+                        continue
+                    if args.dry_run:
+                        raw_deleted += 1
+                    else:
+                        os.remove(path)
+                        raw_deleted += 1
+                except (OSError, ValueError) as exc:
+                    print(f"  ERROR raw archive {path}: {exc}")
+
+    print(f"  Raw archives deleted/eligible: {raw_deleted}")
+    print(f"  Raw archives preserved: {raw_skipped}")
 
     print()
     print(f"=== SUMMARY ===")
