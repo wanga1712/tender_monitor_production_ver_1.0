@@ -28,6 +28,7 @@ class DatabaseIDFetcher:
         self._owns_manager = db_manager is None
         self.db_manager = db_manager or DatabaseManager()
         self.cursor = None  # Инициализируем курсор как None
+        self._okpd_whitelist = None
 
     def __del__(self):
         """Деструктор для закрытия соединения при удалении объекта."""
@@ -264,13 +265,65 @@ class DatabaseIDFetcher:
         return self.fetch_id("users", "username", username)
 
     def get_okpd_id(self, okpd_code):
-        """
-                Получает id записи из таблицы users по имени пользователя.
+        """Resolve a source OKPD code to an allowed canonical whitelist id.
 
-                :param username: Имя пользователя для поиска.
-                :return: id записи или None, если не найдено.
-                """
-        return self.fetch_id("collection_codes_okpd", "sub_code", okpd_code)
+        Exact whitelist matches win; otherwise the longest segment-aligned
+        allowed parent is used. Source codes outside the whitelist remain
+        rejected and the canonical row id, never the source code, is returned.
+        """
+        match = self.resolve_allowed_okpd(okpd_code)
+        return match[0] if match else None
+
+    @staticmethod
+    def _normalize_okpd_segments(okpd_code):
+        if okpd_code is None:
+            return None
+        value = str(okpd_code).strip()
+        if not value:
+            return None
+        segments = tuple(value.split("."))
+        if not all(segment.isdigit() for segment in segments):
+            return None
+        return segments
+
+    def _load_okpd_whitelist(self):
+        if self._okpd_whitelist is not None:
+            return self._okpd_whitelist
+
+        cursor = self.get_cursor()
+        cursor.execute(
+            "SELECT id, sub_code FROM collection_codes_okpd "
+            "WHERE sub_code IS NOT NULL"
+        )
+        rows = cursor.fetchall()
+        whitelist = []
+        for canonical_id, allowed_code in rows:
+            segments = self._normalize_okpd_segments(allowed_code)
+            if segments is not None:
+                whitelist.append((canonical_id, str(allowed_code).strip(), segments))
+        whitelist.sort(key=lambda item: len(item[2]), reverse=True)
+        self._okpd_whitelist = whitelist
+        return whitelist
+
+    def resolve_allowed_okpd(self, source_code):
+        """Return ``(canonical_id, allowed_code, match_type)`` or ``None``."""
+        source_segments = self._normalize_okpd_segments(source_code)
+        if source_segments is None:
+            return None
+        whitelist = self._load_okpd_whitelist()
+
+        for canonical_id, allowed_code, allowed_segments in whitelist:
+            if source_segments == allowed_segments:
+                return canonical_id, allowed_code, "EXACT"
+
+        for canonical_id, allowed_code, allowed_segments in whitelist:
+            parent_len = len(allowed_segments)
+            if (
+                len(source_segments) > parent_len
+                and source_segments[:parent_len] == allowed_segments
+            ):
+                return canonical_id, allowed_code, "PARENT"
+        return None
 
     def contract_number_44_fz_id(self, contract_number_44_fz):
         """
