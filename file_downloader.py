@@ -17,6 +17,7 @@ import time
 from archive_extractor import ArchiveExtractor
 from parsing_xml.okpd_parser import process_okpd_files  # Импортируем функцию для проверки ОКПД
 from file_delete.file_deleter import FileDeleter  # Импортируем класс FileDeleter
+from runtime_safety import cleanup_files, ensure_download_allowed
 from database_work.source_archive_lineage import persist_archive
 
 # Получаем logger (только ошибки в файл)
@@ -118,8 +119,12 @@ class FileDownloader:
 
         # Перебираем все URL в списке - скачиваем файлы
         downloaded_count = 0
+        created_xml_paths = []
+        downloaded_archive_paths = []
+        retained_archive_paths = []
         for url in urls:
             try:
+                ensure_download_allowed(save_path, self.ingestion_direction)
                 # Разбираем URL для получения имени файла
                 parsed_url = urlparse(url)
                 filename = os.path.basename(parsed_url.path) or f"file_{uuid.uuid4().hex[:8]}.zip"
@@ -140,17 +145,22 @@ class FileDownloader:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             file.write(chunk)
+                downloaded_archive_paths.append(file_path)
 
                 # Сохраняем исходный контейнер до extraction и parsing.
                 raw_path = self._retain_archive(file_path, subsystem)
+                retained_archive_paths.append(raw_path)
                 archive_xml_members = self._archive_xml_members(file_path)
                 extracted_before = {p.resolve() for p in Path(save_path).rglob("*.xml") if p.is_file()}
+                ensure_download_allowed(save_path, self.ingestion_direction)
                 self.archive_extractor.unzip_files(save_path)
                 extracted_xml = [p for p in Path(save_path).rglob("*.xml") if p.is_file() and p.resolve() not in extracted_before]
+                created_xml_paths.extend(extracted_xml)
                 persist_archive(raw_path, "44_FZ" if subsystem in ("PRIZ", "RGK") else "223_FZ", self.ingestion_direction, self.source_date, archive_xml_members, subsystem)
 
                 # Удаляем архив после распаковки
                 file_deleter.delete_single_file(file_path)
+                downloaded_archive_paths.remove(file_path)
 
                 downloaded_count += 1
                 # Обновляем единый прогресс-бар скачивания
@@ -173,7 +183,10 @@ class FileDownloader:
 
         # После скачивания всех файлов обрабатываем данные
         logger.info(f"Начало обработки файлов ({fz_type}, регион {region_code})")
-        process_okpd_files(save_path, region_code, progress_manager)
+        try:
+            process_okpd_files(save_path, region_code, progress_manager)
+        finally:
+            cleanup_files(created_xml_paths + downloaded_archive_paths + retained_archive_paths)
         logger.info(f"Обработка файлов завершена ({fz_type}, регион {region_code})")
 
         # Возвращаем путь, в который были сохранены архивы
@@ -212,8 +225,12 @@ class FileDownloader:
             return {"path": save_path, "count": 0, "subsystem": subsystem, "region_code": region_code, "fz_type": fz_type}
 
         downloaded_count = 0
+        created_xml_paths = []
+        downloaded_archive_paths = []
+        retained_archive_paths = []
         for url in urls:
             try:
+                ensure_download_allowed(save_path, self.ingestion_direction)
                 parsed_url = urlparse(url)
                 filename = os.path.basename(parsed_url.path) or f"file_{uuid.uuid4().hex[:8]}.zip"
                 if not filename.lower().endswith(".zip"):
@@ -229,16 +246,21 @@ class FileDownloader:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             file.write(chunk)
+                downloaded_archive_paths.append(file_path)
 
                 # Сохраняем исходный контейнер до extraction и parsing.
                 raw_path = self._retain_archive(file_path, subsystem)
+                retained_archive_paths.append(raw_path)
                 archive_xml_members = self._archive_xml_members(file_path)
                 extracted_before = {p.resolve() for p in Path(save_path).rglob("*.xml") if p.is_file()}
+                ensure_download_allowed(save_path, self.ingestion_direction)
                 self.archive_extractor.unzip_files(save_path)
                 extracted_xml = [p for p in Path(save_path).rglob("*.xml") if p.is_file() and p.resolve() not in extracted_before]
+                created_xml_paths.extend(extracted_xml)
                 persist_archive(raw_path, "44_FZ" if subsystem in ("PRIZ", "RGK") else "223_FZ", self.ingestion_direction, self.source_date, archive_xml_members, subsystem)
                 # Удаляем архив
                 file_deleter.delete_single_file(file_path)
+                downloaded_archive_paths.remove(file_path)
 
                 downloaded_count += 1
                 if progress_manager:
@@ -253,5 +275,6 @@ class FileDownloader:
                 logger.error(f"Неожиданная ошибка при скачивании файла {url}: {e}", exc_info=True)
 
         logger.info(f"Скачивание завершено: {downloaded_count}/{len(urls)} архивов ({fz_type}, регион {region_code})")
+        cleanup_files(created_xml_paths + downloaded_archive_paths + retained_archive_paths)
 
         return {"path": save_path, "count": downloaded_count, "subsystem": subsystem, "region_code": region_code, "fz_type": fz_type}

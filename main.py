@@ -16,6 +16,7 @@ from utils.logger_config import get_logger
 from utils.progress import ProgressManager
 from utils import stats as stats_collector
 from utils.memory_guard import check_memory_and_exit_if_needed
+from runtime_safety import atomic_write_json, atomic_write_text
 from proxy_runner import ProxyRunner
 from eis_requester import EISRequester
 # ВРЕМЕННО отключаем миграцию завершённых контрактов, чтобы не блокировать основной мониторинг.
@@ -57,8 +58,7 @@ def save_processed_date(date_str):
     processed_dates = load_processed_dates()
     processed_dates.add(date_str)
 
-    with PROCESSED_DATES_FILE.open("w", encoding="utf-8") as file:
-        json.dump(list(processed_dates), file, indent=4)
+    atomic_write_json(PROCESSED_DATES_FILE, sorted(processed_dates))
 
 def load_region_progress():
     """Загружает прогресс обработки регионов по датам из JSON-файла."""
@@ -72,8 +72,7 @@ def load_region_progress():
 
 def save_region_progress(progress_data):
     """Сохраняет прогресс обработки регионов по датам в JSON-файл."""
-    with REGION_PROGRESS_FILE.open("w", encoding="utf-8") as file:
-        json.dump(progress_data, file, indent=4, ensure_ascii=False)
+    atomic_write_json(REGION_PROGRESS_FILE, progress_data)
 
 def mark_region_processed(date_str, region_code):
     """Отмечает регион как обработанный для указанной даты."""
@@ -147,8 +146,15 @@ def update_config_date(new_date):
     config.set("eis", "date", new_date.strftime("%Y-%m-%d"))
 
     # Записываем обратно в файл с нужной кодировкой
-    with CONFIG_PATH.open("w", encoding="utf-8") as config_file:
-        config.write(config_file)
+    from io import StringIO
+    rendered = StringIO()
+    config.write(rendered)
+    atomic_write_text(CONFIG_PATH, rendered.getvalue(), validator=_validate_ini)
+
+
+def _validate_ini(content: str) -> None:
+    parsed = configparser.ConfigParser()
+    parsed.read_string(content)
 
 
 def check_data_available(date_str: str) -> bool:

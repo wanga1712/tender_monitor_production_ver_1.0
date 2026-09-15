@@ -35,7 +35,7 @@ PROCESSED_DATES_FILE = "/opt/tendermonitor/processed_dates.json"
 BACKWARD_PROCESSED_DATES_FILE = "/opt/tendermonitor/backward/processed_dates.json"
 BACKWARD_REGION_PROGRESS_FILE = "/opt/tendermonitor/backward/region_progress.json"
 FORWARD_REGION_PROGRESS_FILE = "/opt/tendermonitor/region_progress.json"
-DEFAULT_KEEP_DAYS = 7
+DEFAULT_TTL_HOURS = 2
 
 
 def get_open_files_by_parser() -> set:
@@ -104,18 +104,19 @@ def extract_date_from_dirname(dirname: str) -> str | None:
 def main():
     parser = argparse.ArgumentParser(description="EIS archive retention cleanup")
     parser.add_argument("--dry-run", action="store_true", help="Preview without deleting")
-    parser.add_argument("--keep-days", type=int, default=DEFAULT_KEEP_DAYS,
-                        help=f"Days to keep completed archive dirs (default: {DEFAULT_KEEP_DAYS})")
+    parser.add_argument("--ttl-hours", type=float, default=DEFAULT_TTL_HOURS,
+                        help=f"TTL for orphaned cache files (default: {DEFAULT_TTL_HOURS}h)")
     args = parser.parse_args()
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=args.keep_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=args.ttl_hours)
     open_files = get_open_files_by_parser()
     active_dates = get_active_dates()
     completed_dates = get_completed_dates()
 
     print(f"Archive retention script")
     print(f"  Downloads dir: {DOWNLOADS_DIR}")
-    print(f"  Keep days: {args.keep_days}")
+    print("  Retention role: JANITOR")
+    print(f"  TTL hours: {args.ttl_hours}")
     print(f"  Cutoff date: {cutoff.strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"  Active dates (in progress): {sorted(active_dates)}")
     print(f"  Completed dates: {len(completed_dates)} total")

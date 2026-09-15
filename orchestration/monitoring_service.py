@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+
+from runtime_safety import atomic_write_json
 from typing import Callable, Optional, Set, Dict, Any
 
 
@@ -102,8 +104,7 @@ class TenderMonitorService:
                         self.pending = {}
 
             def save(self):
-                with open(self.filepath, "w") as f:
-                    json.dump(self.pending, f, indent=4)
+                atomic_write_json(self.filepath, self.pending)
 
             def add_pending(self, date_str: str):
                 if date_str not in self.pending:
