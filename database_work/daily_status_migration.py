@@ -35,6 +35,25 @@ TABLES_44 = {
 # GUARD_BACKFILL: не мигрировать записи backfill catch-up преждевременно
 BACKFILL_GUARD_START = '2026-03-26'
 
+# Single source of truth for lifecycle eligibility. COUNT / SELECT candidate ids
+# and the INSERT re-check MUST use the same logical predicate, otherwise rows
+# selected for migration differ from rows the count/insert see.
+MAIN_TO_COMMISSION_ELIGIBILITY = (
+    "end_date IS NOT NULL "
+    "AND end_date <= CURRENT_DATE + INTERVAL '1 day' "
+    f"AND (start_date IS NULL OR start_date < '{BACKFILL_GUARD_START}')"
+)
+
+def commission_to_unclear_predicate(alias: str = "") -> str:
+    """Same logical predicate for COUNT / SELECT / INSERT (optional alias)."""
+    p = f"{alias}." if alias else ""
+    return (
+        f"{p}end_date IS NOT NULL "
+        f"AND {p}end_date < CURRENT_DATE - INTERVAL '90 days' "
+        f"AND {p}delivery_start_date IS NULL "
+        f"AND ({p}start_date IS NULL OR {p}start_date < '{BACKFILL_GUARD_START}')"
+    )
+
 TABLES_223 = {
     'main': 'reestr_contract_223_fz',
     'commission_work': 'reestr_contract_223_fz_commission_work',
@@ -236,9 +255,7 @@ def migrate_from_main_to_commission_work(fz_type: str = '44'):
             # Подсчитываем общее количество записей для миграции
             cursor.execute(f"""
                 SELECT COUNT(*) FROM {tables['main']}
-                WHERE end_date IS NOT NULL
-                  AND end_date <= CURRENT_DATE + INTERVAL '1 day'
-                  AND (start_date IS NULL OR start_date < BACKFILL_GUARD_START)
+                WHERE {MAIN_TO_COMMISSION_ELIGIBILITY}
                   AND id NOT IN (SELECT id FROM {tables['commission_work']})
             """)
             total_to_migrate = cursor.fetchone()[0]
@@ -263,8 +280,7 @@ def migrate_from_main_to_commission_work(fz_type: str = '44'):
                 # Получаем порцию ID контрактов для миграции
                 cursor.execute(f"""
                     SELECT id FROM {tables['main']}
-                    WHERE end_date IS NOT NULL
-                      AND end_date <= CURRENT_DATE + INTERVAL '1 day'
+                    WHERE {MAIN_TO_COMMISSION_ELIGIBILITY}
                       AND id NOT IN (SELECT id FROM {tables['commission_work']})
                     LIMIT 1000;
                 """)
@@ -287,8 +303,7 @@ def migrate_from_main_to_commission_work(fz_type: str = '44'):
                                 INSERT INTO {tables['commission_work']}
                                 SELECT * FROM {tables['main']}
                                 WHERE id = %s
-                                  AND end_date IS NOT NULL
-                                  AND end_date <= CURRENT_DATE + INTERVAL '1 day'
+                                  AND {MAIN_TO_COMMISSION_ELIGIBILITY}
                             """, (contract_id,))
 
                             if cursor.rowcount > 0:
@@ -402,10 +417,7 @@ def migrate_from_commission_work(fz_type: str = '44'):
             try:
                 cursor.execute(f"""
                     SELECT COUNT(*) FROM {tables['commission_work']} c
-                    WHERE c.end_date IS NOT NULL
-                      AND c.end_date < CURRENT_DATE - INTERVAL '90 days'
-                      AND c.delivery_start_date IS NULL
-                      AND (c.start_date IS NULL OR c.start_date < BACKFILL_GUARD_START)
+                    WHERE {commission_to_unclear_predicate('c')}
                       AND NOT EXISTS (SELECT 1 FROM {tables['unclear']} u WHERE u.id = c.id)
                 """)
                 total_unclear = cursor.fetchone()[0]
@@ -520,10 +532,7 @@ def migrate_from_commission_work(fz_type: str = '44'):
             while True:
                 cursor.execute(f"""
                     SELECT id FROM {tables['commission_work']} c
-                    WHERE c.end_date IS NOT NULL
-                      AND c.end_date < CURRENT_DATE - INTERVAL '90 days'
-                      AND c.delivery_start_date IS NULL
-                      AND (c.start_date IS NULL OR c.start_date < BACKFILL_GUARD_START)
+                    WHERE {commission_to_unclear_predicate('c')}
                       AND NOT EXISTS (SELECT 1 FROM {tables['unclear']} u WHERE u.id = c.id)
                     LIMIT 1000;
                 """)
@@ -544,9 +553,7 @@ def migrate_from_commission_work(fz_type: str = '44'):
                                 INSERT INTO {tables['unclear']}
                                 SELECT * FROM {tables['commission_work']}
                                 WHERE id = %s
-                                  AND end_date IS NOT NULL
-                                  AND end_date < CURRENT_DATE - INTERVAL '90 days'
-                                  AND delivery_start_date IS NULL
+                                  AND {commission_to_unclear_predicate('')}
                             """, (contract_id,))
 
                             if cursor.rowcount > 0:
