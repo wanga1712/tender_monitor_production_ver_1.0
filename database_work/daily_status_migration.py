@@ -29,7 +29,9 @@ TABLES_44 = {
     'main': 'reestr_contract_44_fz',
     'commission_work': 'reestr_contract_44_fz_commission_work',
     'unclear': 'reestr_contract_44_fz_unclear',
-    'awarded': 'reestr_contract_44_fz_awarded'
+    'awarded': 'reestr_contract_44_fz_awarded',
+    'unknown': 'reestr_contract_44_fz_unknown',
+    'completed': 'reestr_contract_44_fz_completed',
 }
 
 # GUARD_BACKFILL: не мигрировать записи backfill catch-up преждевременно
@@ -38,11 +40,30 @@ BACKFILL_GUARD_START = '2026-03-26'
 # Single source of truth for lifecycle eligibility. COUNT / SELECT candidate ids
 # and the INSERT re-check MUST use the same logical predicate, otherwise rows
 # selected for migration differ from rows the count/insert see.
-MAIN_TO_COMMISSION_ELIGIBILITY = (
-    "end_date IS NOT NULL "
-    "AND end_date <= CURRENT_DATE + INTERVAL '1 day' "
-    f"AND (start_date IS NULL OR start_date < '{BACKFILL_GUARD_START}')"
-)
+def main_to_commission_predicate(fz_type: str, alias: str = "m") -> str:
+    """Canonical MAIN -> COMMISSION eligibility (single source of truth).
+
+    Includes the canonical-identity guard: a MAIN row is eligible only when its
+    law+contract_number does not already exist in ANY other status table. Stale
+    historical MAIN duplicates of a terminal identity are never moved as live
+    procurements (historical cleanup is a separate bounded reconciliation).
+    """
+    tables = TABLES_44 if fz_type == "44" else TABLES_223
+    p = f"{alias}."
+    parts = [
+        f"{p}contract_number IS NOT NULL",
+        f"{p}end_date IS NOT NULL",
+        f"{p}end_date <= CURRENT_DATE + INTERVAL '1 day'",
+        f"({p}start_date IS NULL OR {p}start_date < '{BACKFILL_GUARD_START}')",
+    ]
+    for key in ("commission_work", "unknown", "unclear", "awarded", "completed"):
+        table = tables.get(key)
+        if table:
+            parts.append(
+                f"NOT EXISTS (SELECT 1 FROM {table} t "
+                f"WHERE t.contract_number = {p}contract_number)"
+            )
+    return " AND ".join(parts)
 
 def commission_to_unclear_predicate(alias: str = "") -> str:
     """Same logical predicate for COUNT / SELECT / INSERT (optional alias)."""
@@ -58,7 +79,8 @@ TABLES_223 = {
     'main': 'reestr_contract_223_fz',
     'commission_work': 'reestr_contract_223_fz_commission_work',
     'unclear': 'reestr_contract_223_fz_unclear',
-    'awarded': 'reestr_contract_223_fz_awarded'
+    'awarded': 'reestr_contract_223_fz_awarded',
+    'completed': 'reestr_contract_223_fz_completed',
 }
 
 # Таблицы завершённых контрактов
@@ -254,9 +276,8 @@ def migrate_from_main_to_commission_work(fz_type: str = '44'):
         with db.get_cursor() as cursor:
             # Подсчитываем общее количество записей для миграции
             cursor.execute(f"""
-                SELECT COUNT(*) FROM {tables['main']}
-                WHERE {MAIN_TO_COMMISSION_ELIGIBILITY}
-                  AND id NOT IN (SELECT id FROM {tables['commission_work']})
+                SELECT COUNT(*) FROM {tables['main']} m
+                WHERE {main_to_commission_predicate(fz_type, 'm')}
             """)
             total_to_migrate = cursor.fetchone()[0]
 
@@ -279,9 +300,8 @@ def migrate_from_main_to_commission_work(fz_type: str = '44'):
             while True:
                 # Получаем порцию ID контрактов для миграции
                 cursor.execute(f"""
-                    SELECT id FROM {tables['main']}
-                    WHERE {MAIN_TO_COMMISSION_ELIGIBILITY}
-                      AND id NOT IN (SELECT id FROM {tables['commission_work']})
+                    SELECT m.id FROM {tables['main']} m
+                    WHERE {main_to_commission_predicate(fz_type, 'm')}
                     LIMIT 1000;
                 """)
                 ids_to_migrate = [row[0] for row in cursor.fetchall()]
@@ -301,9 +321,9 @@ def migrate_from_main_to_commission_work(fz_type: str = '44'):
                             # Вставляем контракт
                             cursor.execute(f"""
                                 INSERT INTO {tables['commission_work']}
-                                SELECT * FROM {tables['main']}
-                                WHERE id = %s
-                                  AND {MAIN_TO_COMMISSION_ELIGIBILITY}
+                                SELECT m.* FROM {tables['main']} m
+                                WHERE m.id = %s
+                                  AND {main_to_commission_predicate(fz_type, 'm')}
                             """, (contract_id,))
 
                             if cursor.rowcount > 0:
@@ -406,7 +426,7 @@ def migrate_from_commission_work(fz_type: str = '44'):
                 cursor.execute(f"""
                     SELECT COUNT(*) FROM {tables['commission_work']} c
                     WHERE c.delivery_start_date IS NOT NULL
-                      AND NOT EXISTS (SELECT 1 FROM {tables['awarded']} a WHERE a.id = c.id)
+                      AND NOT EXISTS (SELECT 1 FROM {tables['awarded']} a WHERE a.contract_number = c.contract_number)
                 """)
                 total_awarded = cursor.fetchone()[0]
             except Exception as e:
@@ -418,7 +438,7 @@ def migrate_from_commission_work(fz_type: str = '44'):
                 cursor.execute(f"""
                     SELECT COUNT(*) FROM {tables['commission_work']} c
                     WHERE {commission_to_unclear_predicate('c')}
-                      AND NOT EXISTS (SELECT 1 FROM {tables['unclear']} u WHERE u.id = c.id)
+                      AND NOT EXISTS (SELECT 1 FROM {tables['unclear']} u WHERE u.contract_number = c.contract_number)
                 """)
                 total_unclear = cursor.fetchone()[0]
             except Exception as e:
@@ -451,7 +471,7 @@ def migrate_from_commission_work(fz_type: str = '44'):
                 cursor.execute(f"""
                     SELECT id FROM {tables['commission_work']} c
                     WHERE c.delivery_start_date IS NOT NULL
-                      AND NOT EXISTS (SELECT 1 FROM {tables['awarded']} a WHERE a.id = c.id)
+                      AND NOT EXISTS (SELECT 1 FROM {tables['awarded']} a WHERE a.contract_number = c.contract_number)
                     LIMIT 1000;
                 """)
                 ids_to_awarded = [row[0] for row in cursor.fetchall()]
@@ -469,9 +489,10 @@ def migrate_from_commission_work(fz_type: str = '44'):
                         try:
                             cursor.execute(f"""
                                 INSERT INTO {tables['awarded']}
-                                SELECT * FROM {tables['commission_work']}
-                                WHERE id = %s
-                                  AND delivery_start_date IS NOT NULL
+                                SELECT c.* FROM {tables['commission_work']} c
+                                WHERE c.id = %s
+                                  AND c.delivery_start_date IS NOT NULL
+                                  AND NOT EXISTS (SELECT 1 FROM {tables['awarded']} a WHERE a.contract_number = c.contract_number)
                             """, (contract_id,))
 
                             if cursor.rowcount > 0:
@@ -533,7 +554,7 @@ def migrate_from_commission_work(fz_type: str = '44'):
                 cursor.execute(f"""
                     SELECT id FROM {tables['commission_work']} c
                     WHERE {commission_to_unclear_predicate('c')}
-                      AND NOT EXISTS (SELECT 1 FROM {tables['unclear']} u WHERE u.id = c.id)
+                      AND NOT EXISTS (SELECT 1 FROM {tables['unclear']} u WHERE u.contract_number = c.contract_number)
                     LIMIT 1000;
                 """)
                 ids_to_unclear = [row[0] for row in cursor.fetchall()]
@@ -551,9 +572,10 @@ def migrate_from_commission_work(fz_type: str = '44'):
                         try:
                             cursor.execute(f"""
                                 INSERT INTO {tables['unclear']}
-                                SELECT * FROM {tables['commission_work']}
-                                WHERE id = %s
-                                  AND {commission_to_unclear_predicate('')}
+                                SELECT c.* FROM {tables['commission_work']} c
+                                WHERE c.id = %s
+                                  AND {commission_to_unclear_predicate('c')}
+                                  AND NOT EXISTS (SELECT 1 FROM {tables['unclear']} u WHERE u.contract_number = c.contract_number)
                             """, (contract_id,))
 
                             if cursor.rowcount > 0:
@@ -650,10 +672,10 @@ def migrate_to_completed(fz_type: str = '44'):
             total_to_complete = 0
             for source in source_tables:
                 cursor.execute(f"""
-                    SELECT COUNT(*) FROM {source}
-                    WHERE delivery_end_date IS NOT NULL
-                      AND delivery_end_date < CURRENT_DATE - INTERVAL '90 days'
-                      AND id NOT IN (SELECT id FROM {completed_table})
+                    SELECT COUNT(*) FROM {source} s
+                    WHERE s.delivery_end_date IS NOT NULL
+                      AND s.delivery_end_date < CURRENT_DATE - INTERVAL '90 days'
+                      AND NOT EXISTS (SELECT 1 FROM {completed_table} t WHERE t.contract_number = s.contract_number)
                 """)
                 total_to_complete += cursor.fetchone()[0]
 
@@ -674,10 +696,10 @@ def migrate_to_completed(fz_type: str = '44'):
                 while True:
                     # Выбираем порцию id для миграции из конкретной таблицы
                     cursor.execute(f"""
-                        SELECT id FROM {source}
-                        WHERE delivery_end_date IS NOT NULL
-                          AND delivery_end_date < CURRENT_DATE - INTERVAL '90 days'
-                          AND id NOT IN (SELECT id FROM {completed_table})
+                        SELECT s.id FROM {source} s
+                        WHERE s.delivery_end_date IS NOT NULL
+                          AND s.delivery_end_date < CURRENT_DATE - INTERVAL '90 days'
+                          AND NOT EXISTS (SELECT 1 FROM {completed_table} t WHERE t.contract_number = s.contract_number)
                         LIMIT 1000;
                     """)
                     ids_to_move = [row[0] for row in cursor.fetchall()]
@@ -699,10 +721,11 @@ def migrate_to_completed(fz_type: str = '44'):
                             try:
                                 cursor.execute(f"""
                                     INSERT INTO {completed_table}
-                                    SELECT * FROM {source}
-                                    WHERE id = %s
-                                      AND delivery_end_date IS NOT NULL
-                                      AND delivery_end_date < CURRENT_DATE - INTERVAL '90 days'
+                                    SELECT s.* FROM {source} s
+                                    WHERE s.id = %s
+                                      AND s.delivery_end_date IS NOT NULL
+                                      AND s.delivery_end_date < CURRENT_DATE - INTERVAL '90 days'
+                                      AND NOT EXISTS (SELECT 1 FROM {completed_table} t WHERE t.contract_number = s.contract_number)
                                 """, (contract_id,))
 
                                 if cursor.rowcount > 0:

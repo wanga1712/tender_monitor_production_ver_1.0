@@ -17,7 +17,8 @@ SRC = MOD.read_text(encoding="utf-8", errors="replace")
 
 
 def test_1_main_to_commission_shared_predicate_used_by_count_select_insert():
-    assert SRC.count("{MAIN_TO_COMMISSION_ELIGIBILITY}") == 3
+    # def + COUNT + SELECT + INSERT
+    assert SRC.count("main_to_commission_predicate(") == 4
 
 
 def test_2_main_to_commission_no_independent_inline_predicate():
@@ -54,16 +55,55 @@ def test_7_predicate_semantics_include_required_conditions():
     spec = importlib.util.spec_from_file_location("dsm_pred", MOD)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    main_pred = mod.MAIN_TO_COMMISSION_ELIGIBILITY
+    main_pred = mod.main_to_commission_predicate("44", "m")
     assert "end_date IS NOT NULL" in main_pred
     assert "end_date <= CURRENT_DATE + INTERVAL '1 day'" in main_pred
-    assert "start_date < '2026-03-26'" in main_pred
+    assert "m.start_date < '2026-03-26'" in main_pred
     unclear = mod.commission_to_unclear_predicate("c")
     assert "c.end_date < CURRENT_DATE - INTERVAL '90 days'" in unclear
     assert "c.delivery_start_date IS NULL" in unclear
     assert "c.start_date < '2026-03-26'" in unclear
     unaliased = mod.commission_to_unclear_predicate("")
     assert "c." not in unaliased and "delivery_start_date IS NULL" in unaliased
+
+
+def test_9_identity_guard_contract_number_not_null():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("dsm_pred9", MOD)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert "m.contract_number IS NOT NULL" in mod.main_to_commission_predicate("44", "m")
+
+
+def test_10_identity_guard_covers_all_status_tables_44():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("dsm_pred10", MOD)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    pred = mod.main_to_commission_predicate("44", "m")
+    for suffix in ("commission_work", "unknown", "unclear", "awarded", "completed"):
+        assert f"reestr_contract_44_fz_{suffix}" in pred
+    assert "t.contract_number = m.contract_number" in pred
+
+
+def test_11_identity_guard_223_set():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("dsm_pred11", MOD)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    pred = mod.main_to_commission_predicate("223", "m")
+    for suffix in ("commission_work", "unclear", "awarded", "completed"):
+        assert f"reestr_contract_223_fz_{suffix}" in pred
+    assert "reestr_contract_223_fz_unknown" not in pred
+
+
+def test_12_no_id_only_dedup_for_transitions():
+    assert "id NOT IN (SELECT id FROM" not in SRC
+    assert "a.id = c.id" not in SRC
+    assert "u.id = c.id" not in SRC
 
 
 def test_8_no_new_modules_or_engines():
