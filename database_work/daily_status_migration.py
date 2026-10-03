@@ -19,6 +19,7 @@ from utils.logger_config import get_logger
 from datetime import datetime, timedelta
 import subprocess
 import os
+import psycopg2
 from pathlib import Path
 from tqdm import tqdm
 
@@ -63,6 +64,13 @@ def main_to_commission_predicate(fz_type: str, alias: str = "m") -> str:
                 f"NOT EXISTS (SELECT 1 FROM {table} t "
                 f"WHERE t.contract_number = {p}contract_number)"
             )
+    # Defect B: identity must be a singleton inside MAIN. Duplicate physical
+    # rows with the same contract_number must not enter normal migration (they
+    # would split across terminal tables and create new collisions).
+    parts.append(
+        f"NOT EXISTS (SELECT 1 FROM {tables['main']} sib "
+        f"WHERE sib.contract_number = {p}contract_number AND sib.id <> {p}id)"
+    )
     return " AND ".join(parts)
 
 def commission_to_unclear_predicate(alias: str = "") -> str:
@@ -88,6 +96,48 @@ COMPLETED_TABLES = {
     '44': 'reestr_contract_44_fz_completed',
     '223': 'reestr_contract_223_fz_completed',
 }
+
+
+def _is_structural_error(exc: Exception) -> bool:
+    """Schema / SQL-structure error that must never be swallowed per-row."""
+    return isinstance(exc, psycopg2.ProgrammingError)
+
+
+def completed_target_columns(cursor, fz_type: str) -> list:
+    """Explicit completed target columns (DB-derived, ordered).
+
+    ``SELECT *`` is forbidden: 44 completed has 21 columns while source status
+    tables have 23 (no created_at/updated_at). Mapping is by NAME, not position.
+    """
+    target = COMPLETED_TABLES[fz_type]
+    cursor.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = %s ORDER BY ordinal_position",
+        (target,),
+    )
+    cols = [row[0] for row in cursor.fetchall()]
+    if not cols:
+        raise RuntimeError(f"completed target {target} has no columns")
+    return cols
+
+
+def validate_completed_sources(cursor, fz_type: str, sources: list) -> list:
+    """Fail fast if any source lacks a required completed target column."""
+    target = COMPLETED_TABLES[fz_type]
+    cols = completed_target_columns(cursor, fz_type)
+    for source in sources:
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+            (source,),
+        )
+        available = {row[0] for row in cursor.fetchall()}
+        missing = [c for c in cols if c not in available]
+        if missing:
+            raise RuntimeError(
+                f"schema mismatch: {source} is missing {missing} required by {target}"
+            )
+    return cols
+
 
 
 def create_backup(force: bool = False):
@@ -669,6 +719,11 @@ def migrate_to_completed(fz_type: str = '44'):
     try:
         with db.get_cursor() as cursor:
             # Подсчитываем общее количество для миграции в completed из всех таблиц
+            # Defect A: explicit completed column mapping (no SELECT *). Fails
+            # fast once if any source cannot satisfy the completed contract.
+            target_cols = validate_completed_sources(cursor, fz_type, source_tables)
+            col_list = ", ".join(target_cols)
+            select_list = ", ".join(f"s.{c}" for c in target_cols)
             total_to_complete = 0
             for source in source_tables:
                 cursor.execute(f"""
@@ -720,8 +775,8 @@ def migrate_to_completed(fz_type: str = '44'):
                         for contract_id in batch_ids:
                             try:
                                 cursor.execute(f"""
-                                    INSERT INTO {completed_table}
-                                    SELECT s.* FROM {source} s
+                                    INSERT INTO {completed_table} ({col_list})
+                                    SELECT {select_list} FROM {source} s
                                     WHERE s.id = %s
                                       AND s.delivery_end_date IS NOT NULL
                                       AND s.delivery_end_date < CURRENT_DATE - INTERVAL '90 days'
@@ -737,6 +792,11 @@ def migrate_to_completed(fz_type: str = '44'):
                             except Exception as e:
                                 error_msg = str(e)
                                 db.connection.rollback()
+
+                                # Structural SQL/schema errors must fail fast, not
+                                # silently continue thousands of times.
+                                if _is_structural_error(e):
+                                    raise
 
                                 if "unique" in error_msg.lower() or "duplicate" in error_msg.lower():
                                     # Уже есть в completed, всё равно удалим из source

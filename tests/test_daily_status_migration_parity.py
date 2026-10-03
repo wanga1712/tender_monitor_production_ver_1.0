@@ -106,6 +106,32 @@ def test_12_no_id_only_dedup_for_transitions():
     assert "u.id = c.id" not in SRC
 
 
+def test_13_defect_a_no_select_star_in_completed():
+    assert "SELECT s.* FROM" not in SRC
+    assert "{select_list}" in SRC
+    assert "INSERT INTO {completed_table} ({col_list})" in SRC
+
+
+def test_14_defect_a_fail_fast_and_validation():
+    assert "def _is_structural_error" in SRC
+    assert "if _is_structural_error(e):" in SRC
+    assert "def validate_completed_sources" in SRC
+    assert "def completed_target_columns" in SRC
+
+
+def test_15_defect_b_duplicate_main_guard():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("dsm_b", MOD)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    pred = mod.main_to_commission_predicate("44", "m")
+    assert "sib.contract_number = m.contract_number" in pred
+    assert "sib.id <> m.id" in pred
+    pred223 = mod.main_to_commission_predicate("223", "m")
+    assert "sib.id <> m.id" in pred223
+
+
 def test_8_no_new_modules_or_engines():
     assert (ROOT / "database_work" / "daily_status_migration.py").exists()
     assert not (ROOT / "database_work" / "daily_status_migration_v2.py").exists()
