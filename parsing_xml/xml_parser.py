@@ -71,7 +71,14 @@ class XMLParser:
 
     @classmethod
     def _detect_document_type(cls, root):
-        supported = {"epNotificationEOK2020", "purchaseNoticeAE", "purchaseNoticeAESMBO"}
+        supported = {
+            "epNotificationEOK2020",
+            "purchaseNoticeAE",
+            "purchaseNoticeAESMBO",
+            "pprf615Contract",
+            "pprf615ContractProcedure",
+            "pprf615ContractProcedureCancel",
+        }
         for element in root.iter():
             document_type = cls._local_name(element.tag)
             if document_type in supported:
@@ -474,7 +481,12 @@ class XMLParser:
         for entry in found_tags:
             if entry:
                 if table_override == 'links_documentation_615_pp':
-                    self.database_operations._insert_data('links_documentation_615_pp', entry)
+                    # The live 615 link table is keyed by contract_id and does
+                    # not have the denormalized contract_number column used by
+                    # the 44/223 tables.
+                    entry_615 = dict(entry)
+                    entry_615.pop('contract_number', None)
+                    self.database_operations._insert_data('links_documentation_615_pp', entry_615)
                 elif self._tags_law_family(tags_file) == '44_FZ':
                     inserted_id = self.database_operations.insert_link_documentation_44_fz(entry)
                 elif self._tags_law_family(tags_file) == '223_FZ':
@@ -588,6 +600,37 @@ class XMLParser:
                 logger.error("Не удалось загрузить schema-specific JSON тегов.")
                 return
 
+        is_615 = (self.config.has_section('eis_615') and
+                  xml_folder_path == self.config.get('eis_615', 'archive_xml', fallback=''))
+        document_type = self._detect_document_type(root) if is_615 else None
+
+        # Procedure and ProcedureCancel are events for an already published
+        # 615 contract. They do not contain purchaseSubjectInfo and therefore
+        # must not be parsed as new contract cards. A procedure can still add
+        # its print-form link to an existing contract; a cancel event only
+        # cancels the procedure document, not the contract itself.
+        if is_615 and document_type in {
+            'pprf615ContractProcedure',
+            'pprf615ContractProcedureCancel',
+        }:
+            contract_tags = tags.get('reestr_contract', {})
+            contract_number = self._extract_contract_number_for_links(root, contract_tags)
+            if not contract_number:
+                return None
+            contract_id = self.db_id_fetcher.get_contract_id_from_table(
+                'reestr_contract_615_pp', contract_number
+            )
+            if contract_id and document_type == 'pprf615ContractProcedure':
+                self.parse_links_documentation(
+                    root,
+                    tags.get('links_documentation', {}),
+                    contract_id,
+                    tags_file,
+                    table_override='links_documentation_615_pp',
+                    contract_number=contract_number,
+                )
+            return contract_id
+
         # Получаем данные о заказчике
         customer_id = self.parse_customer(
             root,
@@ -599,9 +642,6 @@ class XMLParser:
         platform_id = self.parse_trading_platform(root, tags.get('trading_platform', {}))
 
         # Выбираем правильную функцию для контракта
-        is_615 = (self.config.has_section('eis_615') and
-                  xml_folder_path == self.config.get('eis_615', 'archive_xml', fallback=''))
-
         if is_615:
             contract_id = self.parse_reestr_contract_615_pp(
                 root, tags.get('reestr_contract', {}), region_code, okpd_code,
@@ -650,3 +690,4 @@ class XMLParser:
             table_override='links_documentation_615_pp' if is_615 else None,
             contract_number=contract_number_for_links,
         )
+        return contract_id

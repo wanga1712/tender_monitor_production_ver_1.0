@@ -147,6 +147,24 @@ class FileDownloader:
                             file.write(chunk)
                 downloaded_archive_paths.append(file_path)
 
+                # EIS can return an empty/truncated body with HTTP 200.  Do not
+                # leave it in the shared directory: unzip_files() scans every
+                # *.zip there, so one bad response would be logged repeatedly
+                # for every subsequent download and counted as successful.
+                if not zipfile.is_zipfile(file_path):
+                    content_type = response.headers.get("Content-Type", "unknown")
+                    content_length = os.path.getsize(file_path)
+                    cleanup_files([file_path])
+                    downloaded_archive_paths.remove(file_path)
+                    logger.error(
+                        "Ответ ЕИС не является ZIP: %s (status=%s, content_type=%s, bytes=%s)",
+                        url,
+                        response.status_code,
+                        content_type,
+                        content_length,
+                    )
+                    continue
+
                 # Сохраняем исходный контейнер до extraction и parsing.
                 raw_path = self._retain_archive(file_path, subsystem)
                 retained_archive_paths.append(raw_path)
@@ -247,6 +265,20 @@ class FileDownloader:
                         if chunk:
                             file.write(chunk)
                 downloaded_archive_paths.append(file_path)
+
+                if not zipfile.is_zipfile(file_path):
+                    content_type = response.headers.get("Content-Type", "unknown")
+                    content_length = os.path.getsize(file_path)
+                    cleanup_files([file_path])
+                    downloaded_archive_paths.remove(file_path)
+                    logger.error(
+                        "Ответ ЕИС не является ZIP: %s (status=%s, content_type=%s, bytes=%s)",
+                        url,
+                        response.status_code,
+                        content_type,
+                        content_length,
+                    )
+                    continue
 
                 # Сохраняем исходный контейнер до extraction и parsing.
                 raw_path = self._retain_archive(file_path, subsystem)

@@ -60,7 +60,8 @@ def process_okpd_files(folder_path, region_code, progress_manager: Optional[Prog
         _dprint(f"DEBUG: Region ID not found for {region_code}", flush=True)
         return
 
-    config = load_config()
+    runtime_config_path = os.getenv("TENDERMONITOR_CONFIG", "config.ini")
+    config = load_config(runtime_config_path)
     recouped_contract_archive_44_fz_xml = config.get('path', 'recouped_contract_archive_44_fz_xml', fallback=None)
     recouped_contract_archive_223_fz_xml = config.get('path', 'recouped_contract_archive_223_fz_xml', fallback=None)
     archive_615 = None
@@ -85,7 +86,8 @@ def process_okpd_files(folder_path, region_code, progress_manager: Optional[Prog
 
 def process_615_files(folder_path, region_code, progress_manager: Optional[ProgressManager] = None):
     """Обработка XML 615-ПП без фильтрации по ОКПД."""
-    config = load_config()
+    runtime_config_path = os.getenv("TENDERMONITOR_CONFIG", "config.ini")
+    config = load_config(runtime_config_path)
     allowed = set()
     if config.has_section('eis_615'):
         allowed = {
@@ -112,7 +114,7 @@ def process_615_files(folder_path, region_code, progress_manager: Optional[Progr
     skipped_count = 0
     logger.info(f"615-ПП: найдено {total_files} XML файлов (регион {region_code})")
 
-    xml_parser = XMLParser()
+    xml_parser = XMLParser(config_path=runtime_config_path)
     db_operations = xml_parser.database_operations
     for idx, file_name in enumerate(xml_files, 1):
         file_path = os.path.join(folder_path, file_name)
@@ -152,7 +154,7 @@ def process_615_files(folder_path, region_code, progress_manager: Optional[Progr
 
 
 def process_contract_files(folder_path, db_id_fetcher, progress_manager: Optional[ProgressManager] = None):
-    config = load_config()
+    config = load_config(os.getenv("TENDERMONITOR_CONFIG", "config.ini"))
     recouped_44 = config.get("path", "recouped_contract_archive_44_fz_xml", fallback=None)
     if recouped_44 and folder_path == recouped_44:
         from parsing_xml.rgk_batch import process_44_rgk_folder
