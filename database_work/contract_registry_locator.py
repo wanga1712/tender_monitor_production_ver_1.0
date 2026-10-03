@@ -1,7 +1,10 @@
 """
-Поиск контракта по номеру во всех реестрах (включая awarded).
+Поиск контракта по номеру во всех реестрах (identity lookup).
 
-Быстрый путь: end_date >= сегодня → только main + commission_work.
+Набор status-таблиц НЕ зависит от incoming end_date: ищем во ВСЕХ применимых
+таблицах (completed → awarded → unclear → unknown → commission_work → main) и
+выбираем самую terminal-локацию. Локатор никогда не должен «пропускать» terminal
+строку из-за будущего дедлайна входящего XML.
 """
 
 from __future__ import annotations
@@ -11,11 +14,6 @@ from typing import Any, List, Optional, Tuple
 from utils.logger_config import get_logger
 
 from database_work.contract_location import ContractLocation
-from database_work.contract_lookup_strategy import (
-    active_lookup_all_fz,
-    active_lookup_tables,
-    is_active_tender,
-)
 from database_work.database_connection import DatabaseManager
 from database_work.registry_tables import all_lookup_tables, lookup_order, tables_for_fz
 
@@ -40,6 +38,28 @@ def build_unified_lookup_sql(table_names: list[str]) -> str:
     )
 
 
+def build_unified_pairs_sql(pairs: list[tuple[str, str]]) -> str:
+    """One round-trip identity lookup across several (fz_type, table) pairs.
+
+    ``pairs`` is already in terminal-first precedence order, so the winning row
+    is the most terminal location for the contract number.
+    """
+    branches = []
+    for priority, (fz_type, table_name) in enumerate(pairs):
+        branches.append(
+            "("
+            f"SELECT id, '{table_name}'::text AS table_name, "
+            f"'{fz_type}'::text AS fz_type, {priority} AS priority "
+            f"FROM {table_name} WHERE contract_number = %s LIMIT 1"
+            ")"
+        )
+    return (
+        "SELECT id, table_name, fz_type FROM ("
+        + " UNION ALL ".join(branches)
+        + ") candidates ORDER BY priority LIMIT 1"
+    )
+
+
 logger = get_logger()
 
 
@@ -58,22 +78,16 @@ class ContractRegistryLocator:
         """
         Глобальный поиск по номеру.
 
-        При end_date >= сегодня — только main/commission (2–4 запроса).
-        Иначе — полный обход всех таблиц.
+        ``end_date`` НЕ сужает набор status-таблиц: identity lookup всегда
+        полный (terminal-first). Параметр сохранён для обратной совместимости
+        вызовов и больше не влияет на результат.
         """
         number = self._normalize_number(contract_number)
         if not number:
             return None
-
-        if is_active_tender(end_date):
-            if fz_type:
-                return self._search_tables(number, active_lookup_tables(fz_type), fz_type)
-            return self._search_pairs(number, active_lookup_all_fz())
-
         if fz_type:
-            return self.find_in_fz(fz_type, number, end_date=None, force_full=True)
-
-        return self._search_pairs(number, all_lookup_tables())
+            return self.find_in_fz(fz_type, number)
+        return self._find_pairs(number, all_lookup_tables())
 
     def find_in_fz(
         self,
@@ -82,25 +96,56 @@ class ContractRegistryLocator:
         end_date: Any = None,
         force_full: bool = False,
     ) -> Optional[ContractLocation]:
-        """Поиск в контуре одного ФЗ."""
+        """Поиск в контуре одного ФЗ (полный набор status-таблиц, terminal-first)."""
         number = self._normalize_number(contract_number)
         if not number:
             return None
-
-        if not force_full and is_active_tender(end_date):
-            return self._search_tables(number, active_lookup_tables(fz_type), fz_type)
-
-        tables = tables_for_fz(fz_type)
-        return self._search_tables(number, lookup_order(tables), fz_type)
+        return self._find_tables(number, fz_type, lookup_order(tables_for_fz(fz_type)))
 
     def find_in_fz_one_query(
         self, fz_type: str, contract_number: str
     ) -> Optional[ContractLocation]:
-        """Preserve lifecycle lookup order using one DB round-trip."""
+        """Terminal-first identity lookup using one DB round-trip."""
         number = self._normalize_number(contract_number)
         if not number:
             return None
-        table_names = lookup_order(tables_for_fz(fz_type))
+        return self._find_tables(number, fz_type, lookup_order(tables_for_fz(fz_type)))
+
+    def _find_pairs(
+        self,
+        number: str,
+        pairs: List[Tuple[str, str]],
+    ) -> Optional[ContractLocation]:
+        """Identity lookup across 44+223 (one UNION ALL round-trip)."""
+        query = build_unified_pairs_sql(pairs)
+        params = [number] * len(pairs)
+        try:
+            with self._db.connection.cursor() as cursor:
+                cursor.execute(query, tuple(params))
+                row = cursor.fetchone()
+            if not row:
+                return None
+            return ContractLocation(
+                fz_type=str(row[2]),
+                table_name=str(row[1]),
+                record_id=int(row[0]),
+                contract_number=number,
+            )
+        except Exception as exc:
+            logger.error(f"Ошибка unified lookup контракта {number}: {exc}")
+            try:
+                self._db.connection.rollback()
+            except Exception:
+                pass
+            return None
+
+    def _find_tables(
+        self,
+        number: str,
+        fz_type: str,
+        table_names: List[str],
+    ) -> Optional[ContractLocation]:
+        """Identity lookup within one FZ (one UNION ALL round-trip)."""
         query = build_unified_lookup_sql(table_names)
         params = [number] * len(table_names)
         try:
@@ -116,7 +161,9 @@ class ContractRegistryLocator:
                 contract_number=number,
             )
         except Exception as exc:
-            logger.error(f"Ошибка unified lookup контракта {number}: {exc}")
+            logger.error(
+                f"Ошибка unified lookup контракта {number} ({fz_type}): {exc}"
+            )
             try:
                 self._db.connection.rollback()
             except Exception:

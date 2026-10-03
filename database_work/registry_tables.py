@@ -45,21 +45,28 @@ TABLES_223 = RegistryTables(
 
 
 def lookup_order(tables: RegistryTables) -> List[str]:
-    """
-    Порядок поиска контракта по номеру.
+    """Identity lookup order — terminal-first precedence.
 
-    main → unknown → unclear → awarded.
-    completed не ищем и не обновляем — только статистика.
-    commission_work — между main и unknown (живой статус до миграции).
+    COMPLETED > AWARDED > UNCLEAR > UNKNOWN > COMMISSION_WORK > MAIN.
+
+    The SET of status tables is independent of the incoming ``end_date``: a
+    procurement that already lives in a terminal table must never be re-inserted
+    into ``main`` just because the incoming XML carries a future deadline.
+
+    ``completed`` participates in identity lookup (READ/FIND); the parser never
+    mutates it (see xml_parser: only main/commission_work are updated on match).
+    This ordering is also the conflict resolution when a contract number exists
+    in several historical status tables at once.
     """
-    ordered: List[str] = [
-        tables.main,
-        tables.commission_work,
-    ]
+    ordered: List[str] = []
+    if tables.completed:
+        ordered.append(tables.completed)
+    ordered.append(tables.awarded)
+    ordered.append(tables.unclear)
     if tables.unknown:
         ordered.append(tables.unknown)
-    ordered.append(tables.unclear)
-    ordered.append(tables.awarded)
+    ordered.append(tables.commission_work)
+    ordered.append(tables.main)
     return ordered
 
 
@@ -75,7 +82,8 @@ def tables_for_fz(fz_type: str) -> RegistryTables:
 def all_lookup_tables() -> List[Tuple[str, str]]:
     """
     Плоский список (fz_type, table_name) для глобального поиска номера.
-    Порядок внутри ФЗ: main → commission → unknown → unclear → awarded.
+    Порядок внутри ФЗ: terminal-first (completed → awarded → unclear →
+    unknown → commission_work → main), независимо от end_date.
     """
     result: List[Tuple[str, str]] = []
     for tables in (TABLES_44, TABLES_223):
