@@ -6,10 +6,12 @@ from typing import Any, Optional
 
 from psycopg2 import IntegrityError
 from psycopg2.extras import execute_values
+from database_work.document_link_policy import should_persist_document_link
 
 from database_work.rgk_batch_sql import (
     ALLOWED_TABLES_44,
     BATCH_UPDATE_COLUMNS,
+    MUTABLE_TABLES_44,
     UPDATE_VALUE_TEMPLATE,
     build_batch_update_sql,
     build_contractor_lookup_sql,
@@ -264,7 +266,7 @@ class RgkBatchStore:
     def _update_changed(self, cursor, plan: BatchPlan) -> None:
         by_table: dict[str, list] = {}
         for write in plan.updates:
-            if write.table_name not in ALLOWED_TABLES_44 or write.record_id is None:
+            if write.table_name not in MUTABLE_TABLES_44 or write.record_id is None:
                 continue
             by_table.setdefault(write.table_name, []).append(write)
         for table_name, writes in by_table.items():
@@ -299,7 +301,7 @@ class RgkBatchStore:
         for write in plan.promotes:
             if write.record_id is None or write.table_name == awarded:
                 continue
-            if write.table_name not in ALLOWED_TABLES_44:
+            if write.table_name not in MUTABLE_TABLES_44:
                 continue
             by_source.setdefault(write.table_name, []).append(int(write.record_id))
         for source, ids in by_source.items():
@@ -359,7 +361,9 @@ class RgkBatchStore:
         links = [
             item
             for item in plan.links()
-            if item.get("document_links") and item.get("contract_id") in main_ids
+            if item.get("document_links")
+            and item.get("contract_id") in main_ids
+            and should_persist_document_link(item)
         ]
         if not links:
             return

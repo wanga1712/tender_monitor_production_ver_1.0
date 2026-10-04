@@ -31,10 +31,27 @@ BATCH_UPDATE_COLUMNS = (
 ALLOWED_TABLES_44 = frozenset(lookup_order(tables_for_fz("44")))
 MAIN_TABLE_44 = tables_for_fz("44").main
 
+# Terminal/technical registry tables take part in identity lookup (READ/FIND)
+# but the parser must never mutate them: completed is an archive state and
+# unknown is a technical state; both lack an updated_at column, so the RGK
+# batch UPDATE (which appends "updated_at = NOW()") raised UndefinedColumn and
+# killed the backward parser on every restart.
+_TABLES_44 = tables_for_fz("44")
+READ_ONLY_TABLES_44 = frozenset(
+    name for name in (_TABLES_44.completed, _TABLES_44.unknown) if name
+)
+MUTABLE_TABLES_44 = ALLOWED_TABLES_44 - READ_ONLY_TABLES_44
+
 
 def _assert_table(table_name: str) -> str:
     if table_name not in ALLOWED_TABLES_44:
         raise ValueError(f"Unexpected registry table: {table_name}")
+    return table_name
+
+
+def _assert_mutable_table(table_name: str) -> str:
+    if table_name not in MUTABLE_TABLES_44:
+        raise ValueError(f"Registry table is read-only: {table_name}")
     return table_name
 
 
@@ -96,7 +113,7 @@ UPDATE_VALUE_TEMPLATE = (
 
 
 def build_batch_update_sql(table_name: str, columns: Sequence[str] = BATCH_UPDATE_COLUMNS) -> str:
-    table = _assert_table(table_name)
+    table = _assert_mutable_table(table_name)
     assignments = [f"{col} = COALESCE(v.{col}, t.{col})" for col in columns]
     assignments.append("updated_at = NOW()")
     value_cols = ", ".join(["id"] + list(columns))
