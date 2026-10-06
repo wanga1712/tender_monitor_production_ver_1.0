@@ -77,6 +77,7 @@ def extract_contract_number(root) -> Optional[str]:
     possible_xpaths = [
         "order/notificationNumber",
         "notificationNumber",
+        "purchaseNoticeNumber",
         "contractNumber",
         "contract_number",
         "order/contractNumber",
@@ -93,6 +94,7 @@ def extract_contract_number(root) -> Optional[str]:
         lowered = tag_name.lower()
         if (
             "notificationnumber" in lowered
+            or "purchasenoticenumber" in lowered
             or "contractnumber" in lowered
             or "contract_number" in lowered
         ) and elem.text:

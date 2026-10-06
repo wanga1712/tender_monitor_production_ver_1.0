@@ -251,6 +251,7 @@ def extract_contract_number(root):
     possible_xpaths = [
         "order/notificationNumber",
         "notificationNumber",
+        "purchaseNoticeNumber",
         "contractNumber",
         "contract_number",
         "order/contractNumber",
@@ -284,8 +285,9 @@ def extract_contract_number(root):
     
     for elem in root.iter():
         tag_name = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-        if ("notificationNumber" in tag_name.lower() or "contractNumber" in tag_name.lower() or 
-            "contract_number" in tag_name.lower()) and elem.text:
+        lowered = tag_name.lower()
+        if ("notificationnumber" in lowered or "purchasenoticenumber" in lowered
+            or "contractnumber" in lowered or "contract_number" in lowered) and elem.text:
             contract_number = elem.text.strip()
             if contract_number:
                 return contract_number
